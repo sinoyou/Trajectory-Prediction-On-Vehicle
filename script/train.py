@@ -1,11 +1,9 @@
 import argparse
-import logging
-import sys
 
-from model.vanilla import VanillaLSTM
-from model.seq2seq import Seq2SeqLSTM
-from model.utils import get_2d_gaussian, cal_loss_by_2d_gaussian
+
 from script.tools import Recorder
+from model.runner import Runner
+
 
 # args parser
 parser = argparse.ArgumentParser()
