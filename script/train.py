@@ -2,7 +2,7 @@ import argparse
 
 
 from script.tools import Recorder
-from model.runner import Runner
+from model.runner import Trainer
 
 
 # args parser

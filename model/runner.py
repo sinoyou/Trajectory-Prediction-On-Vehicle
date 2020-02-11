@@ -3,6 +3,7 @@ import torch
 import os
 import argparse
 import time
+import random
 
 from data.dataloader import KittiDataLoader
 from script.tools import abs_to_rel, Recorder
@@ -89,7 +90,7 @@ class Runner:
                 x, y = self.data_splitter(data, self.args.pred_len)
                 rel_x, rel_y = self.data_splitter(rel_data, self.args.pred_len)
                 # model forward and backward
-                model_output = self.model(rel_x)
+                model_output, _ = self.model(rel_x)
                 gaussian_output = get_2d_gaussian(model_output=model_output)
                 loss = loss_and_step(gaussian_output, rel_y)
                 loss_list.append(loss)
@@ -141,7 +142,7 @@ class Runner:
             x, y = self.data_splitter(val_data, self.args.pred_len)
             rel_x, rel_y = self.data_splitter(rel_val_data, self.args.pred_len)
 
-            model_output = self.model(rel_x)
+            model_output, _ = self.model(rel_x)
             gaussian_output = get_2d_gaussian(model_output=model_output)
 
             loss = cal_loss_by_2d_gaussian(gaussian_output, rel_y)
@@ -187,11 +188,126 @@ class Runner:
         scalars['fde'] = fde
         self.recorder.writer.add_scalars('val', scalars, epoch)
 
-        self.recorder.plot_trajectory(trajectories)
+        if self.args.plot_trajectory:
+            self.recorder.plot_trajectory(trajectories, step=epoch)
 
-    def test_model(self):
+
+class Tester:
+    def __init__(self, args, recorder):
+        self.args = args
+        self.recorder = recorder
+        self.test_dataset = KittiDataLoader(self.args.test_dataset, 1, self.args.obs_len + self.args.pred_len)
+        self.splitter = None
+        self.sampler = gaussian_sampler
+        self.model = self.restore_model()
+
+    def restore_model(self) -> torch.nn.Module:
         """
-        Test model's performance on test set.
-        :return: test result
+        Load trained model and allocate corresponding data splitter.
+        :return: loaded model
         """
-        pass
+        if not os.path.exists(self.args.load_path):
+            raise Exception('File {} not exists.'.format(self.args.load_path))
+
+        checkpoint = torch.load(self.args.load_path)
+        train_args = checkpoint['args']
+        if self.args.model == 'vanilla':
+            self.splitter = vanilla_evaluation_data_splitter
+            model = VanillaLSTM(input_dim=2,
+                                output_dim=5,
+                                emd_size=train_args.embedding_size,
+                                cell_size=train_args.cell_size,
+                                batch_norm=train_args.batch_norm,
+                                dropout=train_args.dropout)
+            model.load_state_dict(checkpoint['model'])
+            model.eval()
+        else:
+            raise Exception('Model {} not implemented. '.format(self.args.model))
+        return model
+
+    def evaluate(self):
+        """
+        Evaluate Loaded Model with one-by-one case. Then calculate metrics and plot result.
+        Global and Case metrics: ave_loss, final_loss, ave_l2, final_l2, ade, fde
+        Hint: differences between l2 and destination error, l2 is based on relative dis while the other on absolute one.
+        """
+
+        self.recorder.logger.info('Begin Evaluation, {} test cases in total'.format(len(self.test_dataset)))
+        save_list = list()
+        for t in range(len(self.test_dataset)):
+
+            raw_seq = self.test_dataset.next_batch()
+            rel_raw_seq = abs_to_rel(raw_seq)
+            x, y = self.splitter(raw_seq)
+            rel_x, rel_y = self.splitter(rel_raw_seq)
+
+            rel_y_hat = torch.zeros_like(rel_y)
+            gaussian_output_list = list()
+
+            # initial hidden state
+            output, hc = self.model(rel_x, hc=None)
+
+            # predict iterative
+            for itr in range(self.args.pred_len):
+                # sampler
+                gaussian_output = get_2d_gaussian(output)
+                gaussian_output_list.append(gaussian_output)
+                rel_y_hat[0, itr, 0], rel_y_hat[0, itr, 1] = self.sampler(gaussian_output[0, itr, 0],
+                                                                          gaussian_output[0, itr, 1],
+                                                                          gaussian_output[0, itr, 2],
+                                                                          gaussian_output[0, itr, 3],
+                                                                          gaussian_output[0, itr, 4])
+                if itr == self.args.pred_len - 1:
+                    break
+
+                itr_x_rel = rel_y_hat[:, itr, :]
+                output, hc = self.model(itr_x_rel, hc)
+
+            gaussian_output = torch.stack(gaussian_output_list, dim=1)
+
+            # metric calculate
+            loss = cal_loss_by_2d_gaussian(gaussian_output, rel_y)
+            l2 = l2_loss(rel_y_hat, rel_y)
+            euler = l2_loss(rel_to_abs(rel_y_hat), rel_to_abs(rel_y))
+
+            ave_loss = torch.sum(loss) / self.args.pred_len / 1
+            final_loss = torch.sum(loss[0, -1, 0]) / 1 / 1
+            ave_l2 = torch.sum(l2) / self.args.pred_len / 1
+            final_l2 = torch.sum(l2[0, -1, 0]) / 1 / 1
+            ade = torch.sum(euler) / self.args.pred_len / 1
+            fde = torch.sum(euler[0, -1, 0]) / 1 / 1
+            msg = 'AveLoss: {}, FinalLoss: {}, Ade: {}, Fde: {}'.format(ave_loss, final_loss, ave_l2, final_l2)
+            self.recorder.logger.info(msg)
+
+            # plot
+            record = dict()
+            record['tag'] = t
+            record['x'] = x
+            record['y'] = y
+            record['rel_x'] = rel_x
+            record['rel_y'] = rel_y
+            record['rel_y_hat'] = rel_y_hat
+            record['gaussian_output'] = gaussian_output
+            record['ave_loss'] = ave_loss
+            record['final_loss'] = final_loss
+            record['ave_l2'] = ave_l2
+            record['final_l2'] = final_l2
+            record['ade'] = ade
+            record['fde'] = fde
+
+            save_list.append(record)
+            self.recorder.plot_trajectory(record, 1, msg)
+
+        # average metrics calculation
+        self.recorder.logger.info('Calculation of Global Metrics.')
+        metric_list = ['ave_loss', 'final_loss', 'ave_l2', 'final_l2', 'ave_l2', 'final_l2']
+        for metric in metric_list:
+            temp = list()
+            for record in save_list:
+                temp.append(record[metric])
+            self.recorder.logger.info('{} : {}'.format(metric, sum(temp) / len(temp)))
+
+        # export
+        if self.args.export_path:
+            torch.save(save_list, self.args.export_path)
+            self.recorder.logger.info('Export {} Done'.format(self.args.export_path))

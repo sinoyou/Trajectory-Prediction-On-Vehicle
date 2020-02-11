@@ -38,26 +38,26 @@ class VanillaLSTM(torch.nn.Module):
         self.rnn_cell = nn.LSTMCell(self.emd_size, self.cell_size)
         self.dropout = nn.Dropout(p=dropout)
 
-    def forward(self, inputs):
+    def forward(self, inputs, hc=None):
         """
         :param inputs: [batch_size, length, input_dim]
+        :param hc: initial hidden state
         :return: outputs: [batch_size, length, output_dim]
         """
         seq_length = inputs.shape[1]
         outputs = []
-        hc = None
         for step in range(seq_length):
             step_input = inputs[:, step, :]
             emd_input = self.input_emd_layer(step_input)
             hc = self.rnn_cell(input=emd_input, hx=hc)
             emd_output = self.output_emd_layer(hc[0])
             outputs.append(emd_output)
-        return torch.stack(outputs, dim=1)
+        return torch.stack(outputs, dim=1), hc
 
 
-def vanilla_data_splitter(batch_data, pred_len):
+def vanilla_train_data_splitter(batch_data, pred_len):
     """
-    Split data [batch_size, total_len, 2] into datax and datay
+    Split data [batch_size, total_len, 2] into datax and datay in train/val mode
     :param batch_data: data to be split
     :param pred_len: length of trajectories in final loss calculation
     :return: datax, datay
@@ -65,4 +65,17 @@ def vanilla_data_splitter(batch_data, pred_len):
     total_len = batch_data.shape[1]
     datax = batch_data[:, :-1, :]
     datay = batch_data[:, total_len - pred_len:, :]
+    return datax, datay
+
+
+def vanilla_evaluation_data_splitter(batch_data, pred_len):
+    """
+    Split data [batch_size, total_len, 2] into datax and datay in evaluation mode
+    :param batch_data: data to be split
+    :param pred_len: lengthof trajectories in final loss calculation
+    :return: datax, datay
+    """
+    total_len = batch_data.shape[1]
+    datax = batch_data[:, 0:total_len - pred_len, :]
+    datay = batch_data[:, -pred_len:, :]
     return datax, datay

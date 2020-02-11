@@ -9,10 +9,10 @@ def l2_loss(pred_traj, pred_traj_gt):
     - pred_traj: Tensor of shape (batch, seq_len, 2). Predicted trajectory.
     - pred_traj_gt: Tensor of shape (batch, seq_len, 2). Ground truth predictions.
     Output:
-    - loss: l2 loss [batch, seq_len]
+    - loss: l2 loss [batch, seq_len, 1]
     """
     loss = (pred_traj_gt - pred_traj) ** 2
-    return torch.sqrt(loss.sum(dim=2))
+    return torch.sqrt(loss.sum(dim=2, keepdim=True))
 
 
 def make_mlp(dim_list, activation='relu', batch_norm=False, dropout=0):
@@ -97,3 +97,17 @@ def get_2d_gaussian(model_output):
     sigma_y = torch.exp(model_output[:, :, 3])
     cor = torch.tanh(model_output[:, :, 4])
     return torch.stack((mu_x, mu_y, sigma_x, sigma_y, cor), dim=-1)
+
+
+def gaussian_sampler(mux, muy, sx, sy, rho):
+    """
+    Use random sampler to sampel 2D points from gaussian distribution.
+    :return: one 2D point (x, y)
+    """
+    # Extract mean
+    mean = [mux, muy]
+    # Extract covariance matrix
+    cov = [[sx * sx, rho * sx * sy], [rho * sx * sy, sy * sy]]
+    # Sample a point from the multiplytivariate normal distribution
+    x = np.random.multivariate_normal(mean, cov, 1)
+    return x[0][0], x[0][1]

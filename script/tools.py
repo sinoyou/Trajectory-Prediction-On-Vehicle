@@ -18,18 +18,20 @@ class Recorder:
         self.logger = logging.getLogger(__name__)
         self.writer = SummaryWriter('../runs/')
 
-    def plot_trajectory(self, trajectories: list, step):
+    def plot_trajectory(self, trajectories: list, step, title=None):
         """
         Plot trajectory on the board
         :param trajectories: list of dicts. dict {'tag', 'x', 'y', 'rel_x', 'rel_y', 'gaussian_output'}.
                              [batch_size, length, 2/5]
         :param step: print step
+        :param title: title shown on the figure.
         """
         assert trajectories[0]['x'].ndim == 3
 
         for batch_trajectory in trajectories:
             tag = batch_trajectory['tag']
-            batch_gaussian_output = batch_trajectory['gaussian_output']
+            batch_gaussian_output = batch_trajectory['gaussian_output']     # todo draw heat-map
+            batch_rel_y_hat = batch_trajectory['rel_y_hat']
             batch_x = batch_trajectory['x']
             batch_y = batch_trajectory['y']
             batch_rel_x = batch_trajectory['rel_x']
@@ -38,8 +40,10 @@ class Recorder:
             # calc absolute shift from [0, 0]
             batch_x_zero = rel_to_abs(batch_rel_x)
             batch_y_zero = rel_to_abs(batch_rel_y)
-            batch_y_hat_zero = rel_to_abs(batch_gaussian_output[:, :, 0:2]).detach().numpy()
+            batch_y_hat_zero = rel_to_abs(batch_rel_y_hat).detach().numpy()
             fig = plt.figure()
+            if title:
+                plt.title(title)
             for t in range(batch_rel_x.shape[0]):
                 # all path starts from [0,0]
                 plt.subplot(1, 2, 1)
