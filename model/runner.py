@@ -231,7 +231,6 @@ class Tester:
         Global and Case metrics: ave_loss, final_loss, ave_l2, final_l2, ade, fde
         Hint: differences between l2 and destination error, l2 is based on relative dis while the other on absolute one.
         """
-
         self.recorder.logger.info('Begin Evaluation, {} test cases in total'.format(len(self.test_dataset)))
         save_list = list()
         for t in range(len(self.test_dataset)):
@@ -276,7 +275,9 @@ class Tester:
             final_l2 = torch.sum(l2[0, -1, 0]) / 1 / 1
             ade = torch.sum(euler) / self.args.pred_len / 1
             fde = torch.sum(euler[0, -1, 0]) / 1 / 1
-            msg = 'AveLoss: {}, FinalLoss: {}, Ade: {}, Fde: {}'.format(ave_loss, final_loss, ave_l2, final_l2)
+
+            msg = 'AveLoss: {}, FinalLoss: {}, AveL2: {}, FinalL2: {}, Ade: {}, Fde: {}'.format(
+                ave_loss, final_loss, ave_l2, final_l2, ade, fde)
             self.recorder.logger.info(msg)
 
             # plot
