@@ -38,7 +38,7 @@ class Recorder:
             # calc absolute shift from [0, 0]
             batch_x_zero = rel_to_abs(batch_rel_x)
             batch_y_zero = rel_to_abs(batch_rel_y)
-            batch_y_hat_zero = rel_to_abs(batch_gaussian_output[:, :, 0:2]).cpu().detach().numpy()
+            batch_y_hat_zero = rel_to_abs(batch_gaussian_output[:, :, 0:2]).detach().numpy()
             fig = plt.figure()
             for t in range(batch_rel_x.shape[0]):
                 # all path starts from [0,0]

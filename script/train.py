@@ -47,6 +47,9 @@ def run():
     parser.add_argument('--save_every', default=100, type=int)
     parser.add_argument('--restore_dir', default=None, type=str)
 
+    # board
+    parser.add_argument('--plot_trajectory', default=False, type=bool)
+
     args = parser.parse_args()
     recoder = Recorder(args.board_dir)
     recoder.logger.info(args)
