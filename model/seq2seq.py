@@ -24,7 +24,7 @@ class Seq2SeqLSTM(torch.nn.Module):
         self.cell_size = cell_size
 
         self.input_emd_layer = make_mlp([self.input_dim, self.emd_size])
-        self.output_emd_layer = make_mlp([self.cell_size, self.output_dim])
+        self.output_emd_layer = make_mlp([self.cell_size, self.output_dim], activation=None)
         self.encoder = nn.LSTM(self.emd_size, self.cell_size, batch_first=True)
         self.decoder_cell = nn.LSTMCell(self.emd_size, self.cell_size)
 

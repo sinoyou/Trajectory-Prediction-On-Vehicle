@@ -32,10 +32,11 @@ class VanillaLSTM(torch.nn.Module):
         self.cell_size = cell_size
 
         self.input_emd_layer = make_mlp([self.input_dim, self.emd_size],
-                                        batch_norm=batch_norm, dropout=dropout)
+                                        batch_norm=batch_norm, dropout=dropout, activation='relu')
         self.output_emd_layer = make_mlp([self.cell_size, self.output_dim],
-                                         batch_norm=batch_norm, dropout=dropout)
-        self.rnn_cell = nn.LSTMCell(self.input_dim, self.cell_size)
+                                         batch_norm=batch_norm, dropout=dropout, activation=None)
+        self.rnn_cell = nn.LSTMCell(self.emd_size, self.cell_size)
+        self.dropout = nn.Dropout(p=dropout)
 
     def forward(self, inputs):
         """
@@ -44,12 +45,12 @@ class VanillaLSTM(torch.nn.Module):
         """
         seq_length = inputs.shape[1]
         outputs = []
-        hx = None
+        hc = None
         for step in range(seq_length):
             step_input = inputs[:, step, :]
             emd_input = self.input_emd_layer(step_input)
-            hx = self.rnn_cell(input=emd_input, hx=hx)
-            emd_output = self.output_emd_layer(hx[0])
+            hc = self.rnn_cell(input=emd_input, hx=hc)
+            emd_output = self.output_emd_layer(hc[0])
             outputs.append(emd_output)
         return torch.stack(outputs, dim=1)
 
@@ -57,7 +58,7 @@ class VanillaLSTM(torch.nn.Module):
 def vanilla_data_splitter(batch_data, pred_len):
     """
     Split data [batch_size, total_len, 2] into datax and datay
-    :param batch_data: data to be splitted
+    :param batch_data: data to be split
     :param pred_len: length of trajectories in final loss calculation
     :return: datax, datay
     """
