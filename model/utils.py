@@ -12,7 +12,7 @@ def l2_loss(pred_traj, pred_traj_gt):
     - loss: l2 loss [batch, seq_len, 1]
     """
     loss = (pred_traj_gt - pred_traj) ** 2
-    return torch.sqrt(loss.sum(dim=2, keepdim=True))
+    return torch.sqrt(loss.sum(dim=2))
 
 
 def make_mlp(dim_list, activation='relu', batch_norm=False, dropout=0):
@@ -105,9 +105,9 @@ def gaussian_sampler(mux, muy, sx, sy, rho):
     :return: one 2D point (x, y)
     """
     # Extract mean
-    mean = [mux, muy]
+    mean = (mux, muy)
     # Extract covariance matrix
-    cov = [[sx * sx, rho * sx * sy], [rho * sx * sy, sy * sy]]
+    cov = ((sx * sx, rho * sx * sy), (rho * sx * sy, sy * sy))
     # Sample a point from the multiplytivariate normal distribution
-    x = np.random.multivariate_normal(mean, cov, 1)
+    x = np.random.multivariate_normal(mean, cov, size=1)
     return x[0][0], x[0][1]

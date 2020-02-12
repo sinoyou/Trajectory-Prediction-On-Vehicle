@@ -36,7 +36,6 @@ class VanillaLSTM(torch.nn.Module):
         self.output_emd_layer = make_mlp([self.cell_size, self.output_dim],
                                          batch_norm=batch_norm, dropout=dropout, activation=None)
         self.rnn_cell = nn.LSTMCell(self.emd_size, self.cell_size)
-        self.dropout = nn.Dropout(p=dropout)
 
     def forward(self, inputs, hc=None):
         """

@@ -130,6 +130,7 @@ class Runner:
         Validate model when training. Get ave_loss, final_loss, ade, fde
         Plot trajectories on the tensor board.
         """
+        self.model.eval()
         self.validate_data_loader.reset_ptr()
         trajectories = []
         ave_losses = []
@@ -189,7 +190,11 @@ class Runner:
         self.recorder.writer.add_scalars('val', scalars, epoch)
 
         if self.args.plot_trajectory:
-            self.recorder.plot_trajectory(trajectories, step=epoch)
+            if self.args.model == 'vanilla':
+                self.recorder.plot_trajectory(trajectories, step=epoch,
+                                              cat_point=self.args.total_len - self.args.pred_len - 1)
+            else:
+                raise Exception('Model {} not implemented. '.format(self.args.model))
 
 
 class Tester:
@@ -199,7 +204,7 @@ class Tester:
         self.test_dataset = KittiDataLoader(self.args.test_dataset, 1, self.args.obs_len + self.args.pred_len)
         self.splitter = None
         self.sampler = gaussian_sampler
-        self.model = self.restore_model()
+        self.model = self.restore_model().train(False)
 
     def restore_model(self) -> torch.nn.Module:
         """
@@ -220,7 +225,6 @@ class Tester:
                                 batch_norm=train_args.batch_norm,
                                 dropout=train_args.dropout)
             model.load_state_dict(checkpoint['model'])
-            model.eval()
         else:
             raise Exception('Model {} not implemented. '.format(self.args.model))
         return model
@@ -237,52 +241,55 @@ class Tester:
 
             raw_seq = self.test_dataset.next_batch()
             rel_raw_seq = abs_to_rel(raw_seq)
-            x, y = self.splitter(raw_seq)
-            rel_x, rel_y = self.splitter(rel_raw_seq)
+            x, y = self.splitter(raw_seq, self.args.pred_len)
+            rel_x, rel_y = self.splitter(rel_raw_seq, self.args.pred_len)
 
             rel_y_hat = torch.zeros_like(rel_y)
             gaussian_output_list = list()
 
             # initial hidden state
             output, hc = self.model(rel_x, hc=None)
+            output = torch.unsqueeze(output[:, -1, :], dim=1)
 
             # predict iterative
             for itr in range(self.args.pred_len):
                 # sampler
                 gaussian_output = get_2d_gaussian(output)
                 gaussian_output_list.append(gaussian_output)
-                rel_y_hat[0, itr, 0], rel_y_hat[0, itr, 1] = self.sampler(gaussian_output[0, itr, 0],
-                                                                          gaussian_output[0, itr, 1],
-                                                                          gaussian_output[0, itr, 2],
-                                                                          gaussian_output[0, itr, 3],
-                                                                          gaussian_output[0, itr, 4])
+                rel_y_hat[0, itr, 0], rel_y_hat[0, itr, 1] = self.sampler(gaussian_output[0, 0, 0].data,
+                                                                          gaussian_output[0, 0, 1].data,
+                                                                          gaussian_output[0, 0, 2].data,
+                                                                          gaussian_output[0, 0, 3].data,
+                                                                          gaussian_output[0, 0, 4].data)
                 if itr == self.args.pred_len - 1:
                     break
 
-                itr_x_rel = rel_y_hat[:, itr, :]
+                itr_x_rel = torch.zeros((1, 1, 2))
+                itr_x_rel[:, :, :] = rel_y_hat[:, itr, :]
                 output, hc = self.model(itr_x_rel, hc)
 
-            gaussian_output = torch.stack(gaussian_output_list, dim=1)
+            gaussian_output = torch.cat(gaussian_output_list, dim=1)
 
             # metric calculate
             loss = cal_loss_by_2d_gaussian(gaussian_output, rel_y)
             l2 = l2_loss(rel_y_hat, rel_y)
-            euler = l2_loss(rel_to_abs(rel_y_hat), rel_to_abs(rel_y))
+            euler = l2_loss(rel_to_abs(rel_y_hat, start=None), rel_to_abs(rel_y, start=None))
 
             ave_loss = torch.sum(loss) / self.args.pred_len / 1
-            final_loss = torch.sum(loss[0, -1, 0]) / 1 / 1
+            final_loss = torch.sum(loss[0, -1]) / 1 / 1
             ave_l2 = torch.sum(l2) / self.args.pred_len / 1
-            final_l2 = torch.sum(l2[0, -1, 0]) / 1 / 1
+            final_l2 = torch.sum(l2[0, -1]) / 1 / 1
             ade = torch.sum(euler) / self.args.pred_len / 1
-            fde = torch.sum(euler[0, -1, 0]) / 1 / 1
+            fde = torch.sum(euler[0, -1]) / 1 / 1
 
-            msg = 'AveLoss: {}, FinalLoss: {}, AveL2: {}, FinalL2: {}, Ade: {}, Fde: {}'.format(
-                ave_loss, final_loss, ave_l2, final_l2, ade, fde)
+            msg = '{}_AveLoss_{:.3}_FinalLoss_{:.3}_AveL2_{:.3}_FinalL2_{:.3}_Ade_{:.3}_Fde_{:.3}'.format(
+                t, ave_loss, final_loss, ave_l2, final_l2, ade, fde)
             self.recorder.logger.info(msg)
 
             # plot
             record = dict()
             record['tag'] = t
+            record['title'] = msg
             record['x'] = x
             record['y'] = y
             record['rel_x'] = rel_x
@@ -297,16 +304,19 @@ class Tester:
             record['fde'] = fde
 
             save_list.append(record)
-            self.recorder.plot_trajectory(record, 1, msg)
 
         # average metrics calculation
         self.recorder.logger.info('Calculation of Global Metrics.')
-        metric_list = ['ave_loss', 'final_loss', 'ave_l2', 'final_l2', 'ave_l2', 'final_l2']
+        metric_list = ['ave_loss', 'final_loss', 'ave_l2', 'final_l2', 'ade', 'fde']
         for metric in metric_list:
             temp = list()
             for record in save_list:
                 temp.append(record[metric])
             self.recorder.logger.info('{} : {}'.format(metric, sum(temp) / len(temp)))
+
+        # plot
+        self.recorder.logger.info('Plot trajectory')
+        self.recorder.plot_trajectory(save_list, step=1, cat_point=self.args.obs_len - 1)
 
         # export
         if self.args.export_path:
