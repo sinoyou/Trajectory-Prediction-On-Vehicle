@@ -23,7 +23,7 @@ class KittiDataLoader:
 
         self.data = self.preprocess()
         random.seed(seed)
-        random.shuffle(self.data)
+        random.shuffle(self.data, random=random.random)
 
         # print
         print('Count = {}, Batch Size = {}, Iteration = {}'.format(self.count, self.batch_size, self.__len__()))
