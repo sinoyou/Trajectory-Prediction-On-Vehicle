@@ -3,6 +3,7 @@ import sys
 import torch
 from tensorboardX import SummaryWriter
 import matplotlib.pyplot as plt
+from tqdm import tqdm
 
 
 class Recorder:
@@ -18,19 +19,23 @@ class Recorder:
         self.logger = logging.getLogger(__name__)
         self.writer = SummaryWriter('../runs/')
 
-    def plot_trajectory(self, trajectories: list, step, title=None):
+    def plot_trajectory(self, trajectories: list, step, cat_point):
         """
         Plot trajectory on the board
         :param trajectories: list of dicts. dict {'tag', 'x', 'y', 'rel_x', 'rel_y', 'gaussian_output'}.
                              [batch_size, length, 2/5]
         :param step: print step
-        :param title: title shown on the figure.
+        :param cat_point: 1 <= cat_point < obs_len, then point where rel_y and rel_y_hat start.
         """
         assert trajectories[0]['x'].ndim == 3
 
-        for batch_trajectory in trajectories:
+        progress = tqdm(range(len(trajectories)))
+
+        for i, batch_trajectory in enumerate(trajectories):
+            fig = plt.figure()
+            progress.update(1)
             tag = batch_trajectory['tag']
-            batch_gaussian_output = batch_trajectory['gaussian_output']     # todo draw heat-map
+            batch_gaussian_output = batch_trajectory['gaussian_output']  # todo draw heat-map
             batch_rel_y_hat = batch_trajectory['rel_y_hat']
             batch_x = batch_trajectory['x']
             batch_y = batch_trajectory['y']
@@ -38,27 +43,25 @@ class Recorder:
             batch_rel_y = batch_trajectory['rel_y']
 
             # calc absolute shift from [0, 0]
-            batch_x_zero = rel_to_abs(batch_rel_x)
-            batch_y_zero = rel_to_abs(batch_rel_y)
-            batch_y_hat_zero = rel_to_abs(batch_rel_y_hat).detach().numpy()
-            fig = plt.figure()
-            if title:
-                plt.title(title)
-            for t in range(batch_rel_x.shape[0]):
-                # all path starts from [0,0]
-                plt.subplot(1, 2, 1)
-                plt.title('Trajectory start from [0,0]')
-                plt.plot(batch_x_zero[t, :, 0], batch_x_zero[t, :, 1], color='darkblue', label='x')
-                plt.plot(batch_y_zero[t, :, 0], batch_y_zero[t, :, 1], color='goldenrod', label='y_gt')
-                plt.plot(batch_y_hat_zero[t, :, 0], batch_y_hat_zero[t, :, 1], color='deeppink', label='y_hat')
-                plt.legend(loc=2)
-                # original absolute path
-                plt.subplot(1, 2, 2)
-                plt.title('Original absolute path')
+            start = torch.unsqueeze(batch_x[:, cat_point, :], dim=1)
+            batch_y_hat = rel_to_abs(batch_rel_y_hat, start=start)
+
+            if 'title' in batch_trajectory.keys():
+                plt.title(batch_trajectory['title'], fontsize=10)
+
+            for t in range(batch_y.shape[0]):
+                # all paths
+
                 plt.plot(batch_x[t, :, 0], batch_x[t, :, 1], color='darkblue', label='x')
-                plt.plot(batch_y[t, :, 0], batch_y[t, :, 1], color='goldenrod', label='y_gt')
+
+                plot_path = torch.cat((start, batch_y), dim=1)
+                plt.plot(plot_path[t, :, 0], plot_path[t, :, 1], color='goldenrod', label='y_gt')
+
+                plot_path = torch.cat((start, batch_y_hat), dim=1)
+                plt.plot(plot_path[t, :, 0], plot_path[t, :, 1], color='deeppink', label='y_hat')
+
                 plt.legend(loc=2)
-            self.writer.add_figure(tag=str(tag), figure=fig, global_step=step)
+                self.writer.add_figure(tag=str(tag), figure=fig, global_step=step)
 
 
 def abs_to_rel(trajectory):
@@ -74,15 +77,18 @@ def abs_to_rel(trajectory):
     return rel
 
 
-def rel_to_abs(rel):
+def rel_to_abs(rel, start):
     """
-    Transform relative location into abs locatio.
-    Default: the last step of the first predicted step is [0,0]
+    Transform relative location into abs location.
     :param rel: Tensor[batch_size, length, 2]
+    :param start: the last step of observation seq. [batch_size, 1, 2]
     :return: trajectory -> Tensor[batch_size, length, 2]
     """
+    if start is None:
+        start = torch.zeros((rel.shape[0], 1, 2))
+
     trajectory = torch.zeros_like(rel)
-    trajectory[:, 0, :] = rel[:, 0, :]
+    trajectory[:, 0, :] = rel[:, 0, :] + start
     for i in range(1, trajectory.shape[1]):
-        trajectory[:, i, :] = torch.add(rel[:, i, :], trajectory[:, i - 1, :])
+        trajectory[:, i, :] = rel[:, i, :] + trajectory[:, i - 1, :]
     return trajectory
