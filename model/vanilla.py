@@ -4,7 +4,7 @@ import time
 
 from torch import nn, optim
 import torch
-from model.utils import make_mlp
+from model.utils import make_mlp, get_2d_gaussian, gaussian_sampler
 
 
 class VanillaLSTM(torch.nn.Module):
@@ -53,28 +53,70 @@ class VanillaLSTM(torch.nn.Module):
             outputs.append(emd_output)
         return torch.stack(outputs, dim=1), hc
 
+    @staticmethod
+    def train_data_splitter(batch_data, pred_len):
+        """
+        Split data [batch_size, total_len, 2] into datax and datay in train/val mode
+        :param batch_data: data to be split
+        :param pred_len: length of trajectories in final loss calculation
+        :return: datax, datay
+        """
+        total_len = batch_data.shape[1]
+        datax = batch_data[:, :-1, :]
+        datay = batch_data[:, total_len - pred_len:, :]
+        return datax, datay
 
-def vanilla_train_data_splitter(batch_data, pred_len):
-    """
-    Split data [batch_size, total_len, 2] into datax and datay in train/val mode
-    :param batch_data: data to be split
-    :param pred_len: length of trajectories in final loss calculation
-    :return: datax, datay
-    """
-    total_len = batch_data.shape[1]
-    datax = batch_data[:, :-1, :]
-    datay = batch_data[:, total_len - pred_len:, :]
-    return datax, datay
+    @staticmethod
+    def evaluation_data_splitter(batch_data, pred_len):
+        """
+        Split data [batch_size, total_len, 2] into datax and datay in evaluation mode
+        :param batch_data: data to be split
+        :param pred_len: lengthof trajectories in final loss calculation
+        :return: datax, datay
+        """
+        total_len = batch_data.shape[1]
+        datax = batch_data[:, 0:total_len - pred_len, :]
+        datay = batch_data[:, -pred_len:, :]
+        return datax, datay
 
+    @staticmethod
+    def interface(model, input_x, pred_len, sample_times):
+        """
+        During evaluation, use trained model to interface.
+        :param model: Loaded Vanilla Model
+        :param input_x: obs data [1, obs_len, 2]
+        :param pred_len: length of prediction
+        :param sample_times: times of sampling trajectories
+        :return: gaussian_output [sample_times, pred_len, 5], location_output[sample_times, pred_len, 2]
+        """
+        sample_gaussian = list()
+        sample_location = list()
+        for _ in range(sample_times):
+            rel_y_hat = torch.zeros((1, pred_len, 2))
+            gaussian_output = torch.zeros((1, pred_len, 5))
 
-def vanilla_evaluation_data_splitter(batch_data, pred_len):
-    """
-    Split data [batch_size, total_len, 2] into datax and datay in evaluation mode
-    :param batch_data: data to be split
-    :param pred_len: lengthof trajectories in final loss calculation
-    :return: datax, datay
-    """
-    total_len = batch_data.shape[1]
-    datax = batch_data[:, 0:total_len - pred_len, :]
-    datay = batch_data[:, -pred_len:, :]
-    return datax, datay
+            # initial hidden state
+            output, hc = model(input_x, hc=None)
+            output = torch.unsqueeze(output[:, -1, :], dim=1)
+
+            # predict iterative
+            for itr in range(pred_len):
+                # sampler
+                gaussian_output[0, itr, :] = get_2d_gaussian(output)
+                rel_y_hat[0, itr, 0], rel_y_hat[0, itr, 1] = gaussian_sampler(gaussian_output[0, 0, 0].data,
+                                                                              gaussian_output[0, 0, 1].data,
+                                                                              gaussian_output[0, 0, 2].data,
+                                                                              gaussian_output[0, 0, 3].data,
+                                                                              gaussian_output[0, 0, 4].data)
+                if itr == pred_len - 1:
+                    break
+
+                itr_x_rel = torch.zeros((1, 1, 2))
+                itr_x_rel[:, :, :] = rel_y_hat[:, itr, :]
+                output, hc = model(itr_x_rel, hc)
+
+            # add sample result
+            sample_gaussian.append(gaussian_output)
+            sample_location.append(rel_y_hat)
+
+        return torch.cat(sample_gaussian, dim=0), torch.cat(sample_location, dim=0)
