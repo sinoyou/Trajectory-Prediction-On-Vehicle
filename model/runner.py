@@ -87,8 +87,8 @@ class Runner:
                 # load data
                 data = self.data_loader.next_batch()
                 rel_data = abs_to_rel(data)
-                x, y = self.data_splitter(data, self.args.pred_len)
-                rel_x, rel_y = self.data_splitter(rel_data, self.args.pred_len)
+                x, y = self.model_static.train_data_splitter(data, self.args.pred_len)
+                rel_x, rel_y = self.model_static.train_data_splitter(rel_data, self.args.pred_len)
                 # model forward and backward
                 model_output, _ = self.model(rel_x)
                 gaussian_output = get_2d_gaussian(model_output=model_output)
@@ -140,8 +140,8 @@ class Runner:
         for i in range(len(self.validate_data_loader)):
             val_data = self.validate_data_loader.next_batch()
             rel_val_data = abs_to_rel(val_data)
-            x, y = self.data_splitter(val_data, self.args.pred_len)
-            rel_x, rel_y = self.data_splitter(rel_val_data, self.args.pred_len)
+            x, y = self.model_static.train_data_splitter(val_data, self.args.pred_len)
+            rel_x, rel_y = self.model_static.train_data_splitter(rel_val_data, self.args.pred_len)
 
             model_output, _ = self.model(rel_x)
             gaussian_output = get_2d_gaussian(model_output=model_output)
@@ -202,7 +202,7 @@ class Tester:
         self.args = args
         self.recorder = recorder
         self.test_dataset = KittiDataLoader(self.args.test_dataset, 1, self.args.obs_len + self.args.pred_len)
-        self.splitter = None
+        self.model_static = None
         self.sampler = gaussian_sampler
         self.model = self.restore_model().train(False)
 
@@ -217,7 +217,7 @@ class Tester:
         checkpoint = torch.load(self.args.load_path)
         train_args = checkpoint['args']
         if self.args.model == 'vanilla':
-            self.splitter = vanilla_evaluation_data_splitter
+            self.model_static = VanillaLSTM
             model = VanillaLSTM(input_dim=2,
                                 output_dim=5,
                                 emd_size=train_args.embedding_size,
@@ -238,52 +238,33 @@ class Tester:
         self.recorder.logger.info('Begin Evaluation, {} test cases in total'.format(len(self.test_dataset)))
         save_list = list()
         for t in range(len(self.test_dataset)):
-
             raw_seq = self.test_dataset.next_batch()
             rel_raw_seq = abs_to_rel(raw_seq)
-            x, y = self.splitter(raw_seq, self.args.pred_len)
-            rel_x, rel_y = self.splitter(rel_raw_seq, self.args.pred_len)
+            x, y = self.model_static.evaluation_data_splitter(raw_seq, self.args.pred_len)
+            rel_x, rel_y = self.model_static.evaluation_data_splitter(rel_raw_seq, self.args.pred_len)
 
-            rel_y_hat = torch.zeros_like(rel_y)
-            gaussian_output_list = list()
-
-            # initial hidden state
-            output, hc = self.model(rel_x, hc=None)
-            output = torch.unsqueeze(output[:, -1, :], dim=1)
-
-            # predict iterative
-            for itr in range(self.args.pred_len):
-                # sampler
-                gaussian_output = get_2d_gaussian(output)
-                gaussian_output_list.append(gaussian_output)
-                rel_y_hat[0, itr, 0], rel_y_hat[0, itr, 1] = self.sampler(gaussian_output[0, 0, 0].data,
-                                                                          gaussian_output[0, 0, 1].data,
-                                                                          gaussian_output[0, 0, 2].data,
-                                                                          gaussian_output[0, 0, 3].data,
-                                                                          gaussian_output[0, 0, 4].data)
-                if itr == self.args.pred_len - 1:
-                    break
-
-                itr_x_rel = torch.zeros((1, 1, 2))
-                itr_x_rel[:, :, :] = rel_y_hat[:, itr, :]
-                output, hc = self.model(itr_x_rel, hc)
-
-            gaussian_output = torch.cat(gaussian_output_list, dim=1)
+            all_pred_gaussian, all_rel_y_hat = self.model_static.interface(model=self.model, input_x=rel_x,
+                                                                           pred_len=self.args.pred_len,
+                                                                           sample_times=self.args.sample_times)
 
             # metric calculate
-            loss = cal_loss_by_2d_gaussian(gaussian_output, rel_y)
-            l2 = l2_loss(rel_y_hat, rel_y)
-            euler = l2_loss(rel_to_abs(rel_y_hat, start=None), rel_to_abs(rel_y, start=None))
+            loss = cal_loss_by_2d_gaussian(all_pred_gaussian, rel_y)
+            l2 = l2_loss(all_rel_y_hat, rel_y)
+            euler = l2_loss(rel_to_abs(all_rel_y_hat, start=None), rel_to_abs(rel_y, start=None))
 
-            ave_loss = torch.sum(loss) / self.args.pred_len / 1
-            final_loss = torch.sum(loss[0, -1]) / 1 / 1
-            ave_l2 = torch.sum(l2) / self.args.pred_len / 1
-            final_l2 = torch.sum(l2[0, -1]) / 1 / 1
-            ade = torch.sum(euler) / self.args.pred_len / 1
-            fde = torch.sum(euler[0, -1]) / 1 / 1
+            # relative
+            ave_loss = torch.sum(loss) / (self.args.pred_len * self.args.sample_times)
+            final_loss = torch.sum(loss[:, -1, :]) / self.args.sample_times
+            ave_l2 = torch.sum(l2) / (self.args.pred_len * self.args.sample_times)
+            final_l2 = torch.sum(l2[:, -1, :]) / self.args.sample_times
+            # absolute
+            ade = torch.sum(euler) / (self.args.pred_len * self.args.sample_times)
+            fde = torch.sum(euler[:, -1, :]) / self.args.sample_times
+            min_ade = torch.min(torch.sum(euler, dim=[1, 2]) / self.args.pred_len)
+            min_fde = torch.min(euler[:, -1, :])
 
-            msg = '{}_AveLoss_{:.3}_FinalLoss_{:.3}_AveL2_{:.3}_FinalL2_{:.3}_Ade_{:.3}_Fde_{:.3}'.format(
-                t, ave_loss, final_loss, ave_l2, final_l2, ade, fde)
+            msg = '{}_AveLoss_{:.3}_AveL2_{:.3}_FinalL2_{:.3}_Ade_{:.3}_Fde_{:.3}_MAde_{:.3f}_MFde_{:.3f}'.format(
+                t, ave_loss, ave_l2, final_l2, ade, fde, min_ade, min_fde)
             self.recorder.logger.info(msg)
 
             # plot
@@ -294,20 +275,22 @@ class Tester:
             record['y'] = y
             record['rel_x'] = rel_x
             record['rel_y'] = rel_y
-            record['rel_y_hat'] = rel_y_hat
-            record['gaussian_output'] = gaussian_output
+            record['rel_y_hat'] = all_rel_y_hat
+            record['gaussian_output'] = all_pred_gaussian
             record['ave_loss'] = ave_loss
             record['final_loss'] = final_loss
             record['ave_l2'] = ave_l2
             record['final_l2'] = final_l2
             record['ade'] = ade
             record['fde'] = fde
+            record['min_ade'] = min_ade
+            record['min_fde'] = min_fde
 
             save_list.append(record)
 
-        # average metrics calculation
+        # globally average metrics calculation
         self.recorder.logger.info('Calculation of Global Metrics.')
-        metric_list = ['ave_loss', 'final_loss', 'ave_l2', 'final_l2', 'ade', 'fde']
+        metric_list = ['ave_loss', 'final_loss', 'ave_l2', 'final_l2', 'ade', 'fde', 'min_ade', 'min_fde']
         for metric in metric_list:
             temp = list()
             for record in save_list:
