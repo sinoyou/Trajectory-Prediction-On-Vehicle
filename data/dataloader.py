@@ -38,7 +38,7 @@ class KittiDataLoader:
         data = list()
         for t in range(self.count):
             # current object used up
-            if seq_ptr + self.trajectory_length > len(self.objects[obj_ptr]):
+            while seq_ptr + self.trajectory_length > len(self.objects[obj_ptr]):
                 # update object pointer
                 obj_ptr = obj_ptr + 1
                 seq_ptr = 0
@@ -70,6 +70,6 @@ class KittiDataLoader:
 
 
 if __name__ == '__main__':
-    loader = KittiDataLoader(os.path.join('..', 'data', 'kitti-train.json'), 1, 5)
+    loader = KittiDataLoader(os.path.join('..', 'data', 'kitti-train.json'), 1, 16)
     for i in range(5):
         print(loader.next_batch())
