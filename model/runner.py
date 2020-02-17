@@ -8,29 +8,28 @@ from attrdict import AttrDict
 from tqdm import tqdm
 
 from data.dataloader import KittiDataLoader
-from script.tools import abs_to_rel, Recorder
-from model.utils import cal_loss_by_2d_gaussian, get_2d_gaussian, l2_loss
+from script.tools import abs_to_rel, rel_to_abs
+from model.utils import cal_loss_by_2d_gaussian, get_2d_gaussian, l2_loss, gaussian_sampler
 from model.vanilla import VanillaLSTM
 from model.seq2seq import Seq2SeqLSTM
 
 
-class Runner:
-    def __init__(self, args: argparse.ArgumentParser(), recorder, data_splitter):
+class Trainer:
+    def __init__(self, args: argparse.ArgumentParser(), recorder):
         """
         Runner for model training, validation and test
         :param args: arguments of training or test
         :param recorder: log information class (stdout + tensor board)
-        :param data_splitter: split data of total_length according to different architecture.
         """
         self.args = args
         self.recorder = recorder
+        self.model_static = None
         self.model, self.optimizer = self.build()
         self.model = self.model.train(True)
         self.data_loader = KittiDataLoader(self.args.train_dataset,
                                            self.args.batch_size,
-                                           self.args.total_length)
-        self.validate_data_loader = KittiDataLoader(self.args.val_dataset, 1, self.args.total_length)
-        self.data_splitter = data_splitter
+                                           self.args.total_len)
+        self.validate_data_loader = KittiDataLoader(self.args.val_dataset, 1, self.args.total_len)
 
     def build(self):
         """
@@ -39,26 +38,31 @@ class Runner:
         """
         # model
         if not self.args.bbox:
-            vanilla = VanillaLSTM(input_dim=2,
-                                  output_dim=5,
-                                  emd_size=self.args.embedding_size,
-                                  cell_size=self.args.cell_size,
-                                  batch_norm=self.args.batch_norm,
-                                  dropout=self.args.dropout)
+            if self.args.model == 'vanilla':
+                self.model_static = VanillaLSTM
+                model = VanillaLSTM(input_dim=2,
+                                    output_dim=5,
+                                    emd_size=self.args.embedding_size,
+                                    cell_size=self.args.cell_size,
+                                    batch_norm=self.args.batch_norm,
+                                    dropout=self.args.dropout)
+            else:
+                raise Exception('Model {} not implemented.'.format(self.args.model))
         else:
             raise Exception('More Input Not Implemented in Runner.')
 
         # optimizer
-        optimizer = torch.optim.Adam(vanilla.parameters(),
+        optimizer = torch.optim.Adam(model.parameters(),
                                      lr=self.args.learning_rate,
                                      weight_decay=self.args.weight_decay)
 
-        if self.args.load_dir and os.path.isfile(self.args.load_dir):
+        if self.args.restore_dir and os.path.exists(self.args.restore_dir):
+            self.recorder.logger.info('Restoring from {}'.format(self.args.load_dir))
             checkpoint = torch.load(self.args.load_dir)
-            vanilla.load_state_dict(checkpoint['model'])
+            model.load_state_dict(checkpoint['model'])
             optimizer.load_state_dict(checkpoint['optimizer'])
 
-        return vanilla, optimizer
+        return model, optimizer
 
     def train_model(self):
         """
@@ -69,18 +73,18 @@ class Runner:
 
         def loss_and_step(gaussian_output, datay):
             loss = cal_loss_by_2d_gaussian(gaussian_output, datay)
-            loss = torch.sum(loss)
+            ave_loss = torch.sum(loss) / self.args.pred_len / self.args.batch_size
 
             self.optimizer.zero_grad()
-            loss.backward()
+            ave_loss.backward()
             if self.args.clip_threshold > 0:
                 torch.nn.utils.clip_grad_norm(self.model.parameters(),
                                               self.args.clip_threshold)
             self.optimizer.step()
-            return loss
+            return ave_loss, loss
 
         for epoch in range(self.args.num_epochs):
-            self.recorder.logger.info('Starting epoch {}'.format(epoch))
+            self.recorder.logger.info(' >>> Starting epoch {}'.format(epoch))
             start_time = time.time()
             batch_num = len(self.data_loader)
 
@@ -95,28 +99,28 @@ class Runner:
                 # model forward and backward
                 model_output, _ = self.model(rel_x)
                 gaussian_output = get_2d_gaussian(model_output=model_output)
-                loss = loss_and_step(gaussian_output, rel_y)
-                loss_list.append(loss)
+                gaussian_output = gaussian_output[:, -self.args.pred_len:, :]
+                ave_loss, loss = loss_and_step(gaussian_output, rel_y)
+                loss_list.append(ave_loss)
 
             end_time = time.time()
             ave_loss = np.array(loss_list).sum() / len(loss_list)
 
             # validate
-            if epoch > 0 and epoch % self.args.validate_every:
-                self.recorder.logger.info('Begin Validation')
-                self.validate_model(epoch=epoch)
-                self.recorder.logger.info('End Validation')
+            if epoch > 0 and epoch % self.args.validate_every == 0:
+                checkpoint['model'] = self.model.state_dict()
+                checkpoint['optimizer'] = self.optimizer.state_dict()
+                self.validate_model(epoch=epoch, checkpoint=checkpoint)
 
             # print
-            self.recorder.writer.add_sclar('loss', ave_loss, epoch)
-            if epoch > 0 and epoch % self.args.print_every == 0:
-                self.recorder.logger.info('Epoch {}, Loss {}, Time {}'.format(
+            self.recorder.writer.add_scalar('train_loss', ave_loss, epoch)
+            if epoch >= 0 and epoch % self.args.print_every == 0:
+                self.recorder.logger.info('Epoch {}, Train_Loss {}, Time {}'.format(
                     epoch,
                     ave_loss,
                     end_time - start_time
                 ))
 
-            # save
             if epoch > 0 and epoch % self.args.save_every == 0:
                 checkpoint['model'] = self.model.state_dict()
                 checkpoint['optimizer'] = self.optimizer.state_dict()
