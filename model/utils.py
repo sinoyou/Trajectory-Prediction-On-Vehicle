@@ -7,12 +7,12 @@ def l2_loss(pred_traj, pred_traj_gt):
     """
     Input:
     - pred_traj: Tensor of shape (batch, seq_len, 2). Predicted trajectory.
-    - pred_traj_gt: Tensor of shape (batch, seq_len, 2). Ground truth predictions.
+    - pred_traj_gt: Tensor of shape (1/batch, seq_len, 2). Ground truth predictions.
     Output:
     - loss: l2 loss [batch, seq_len, 1]
     """
     loss = (pred_traj_gt - pred_traj) ** 2
-    return torch.sqrt(loss.sum(dim=2))
+    return torch.sqrt(torch.sum(loss, dim=2, keepdim=True))
 
 
 def make_mlp(dim_list, activation='relu', batch_norm=False, dropout=0):
@@ -36,7 +36,7 @@ def cal_loss_by_2d_gaussian(gaussian_output, target):
     Negative log likelihood loss based on 2D Gaussian Distribution
     :param gaussian_output: Tensor[batch_size, pred_length, 5] [mu_x, mu_y, sigma_x, sigma_y, cor]
     :param target: Tensor[batch_size, pred_length, 2]
-    :return: loss -> Tensor[batch_size, pred_length]
+    :return: loss -> Tensor[batch_size, pred_length, 1]
     """
     mu_x, mu_y, sigma_x, sigma_y, cor = torch.split(gaussian_output, 1, dim=2)
     tar_x, tar_y = torch.split(target, 1, dim=2)
@@ -76,11 +76,9 @@ def cal_loss_by_2d_gaussian(gaussian_output, target):
 
     loss = - torch.log(pdf_ave)
 
-    assert loss.shape[0] == target.shape[0]
-    assert loss.shape[1] == target.shape[1]
+    assert loss.shape[0] == gaussian_output.shape[0]
+    assert loss.shape[1] == gaussian_output.shape[1]
     assert loss.shape[2] == 1
-
-    loss = torch.squeeze(loss, dim=2)
 
     return loss
 
