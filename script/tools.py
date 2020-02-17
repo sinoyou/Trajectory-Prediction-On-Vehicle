@@ -63,6 +63,8 @@ class Recorder:
             plt.legend(loc=2)
             self.writer.add_figure(tag=str(tag), figure=fig, global_step=step)
 
+        progress.close()
+
 
 def abs_to_rel(trajectory):
     """

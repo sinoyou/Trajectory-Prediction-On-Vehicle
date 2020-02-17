@@ -75,7 +75,7 @@ class VanillaLSTM(torch.nn.Module):
         :return: datax, datay
         """
         total_len = batch_data.shape[1]
-        datax = batch_data[:, 0:total_len - pred_len, :]
+        datax = batch_data[:, 0:-pred_len, :]
         datay = batch_data[:, -pred_len:, :]
         return datax, datay
 

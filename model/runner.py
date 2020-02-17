@@ -4,6 +4,8 @@ import os
 import argparse
 import time
 import random
+from attrdict import AttrDict
+from tqdm import tqdm
 
 from data.dataloader import KittiDataLoader
 from script.tools import abs_to_rel, Recorder
@@ -23,6 +25,7 @@ class Runner:
         self.args = args
         self.recorder = recorder
         self.model, self.optimizer = self.build()
+        self.model = self.model.train(True)
         self.data_loader = KittiDataLoader(self.args.train_dataset,
                                            self.args.batch_size,
                                            self.args.total_length)
@@ -125,76 +128,28 @@ class Runner:
                 torch.save(checkpoint, checkpoint_path)
                 self.recorder.logger.info('Done')
 
-    def validate_model(self, epoch):
+    def validate_model(self, epoch, checkpoint):
         """
         Validate model when training. Get ave_loss, final_loss, ade, fde
         Plot trajectories on the tensor board.
         """
-        self.model.eval()
-        self.validate_data_loader.reset_ptr()
-        trajectories = []
-        ave_losses = []
-        final_losses = []
-        ades = []
-        fdes = []
-        for i in range(len(self.validate_data_loader)):
-            val_data = self.validate_data_loader.next_batch()
-            rel_val_data = abs_to_rel(val_data)
-            x, y = self.model_static.train_data_splitter(val_data, self.args.pred_len)
-            rel_x, rel_y = self.model_static.train_data_splitter(rel_val_data, self.args.pred_len)
+        # save current model parameters temporarily.
+        checkpoint_path = os.path.join(self.args.save_dir, 'temp_checkpoint_val')
+        torch.save(checkpoint, checkpoint_path)
 
-            model_output, _ = self.model(rel_x)
-            gaussian_output = get_2d_gaussian(model_output=model_output)
-
-            loss = cal_loss_by_2d_gaussian(gaussian_output, rel_y)
-            l2 = l2_loss(gaussian_output[:, :, 0:2], rel_y)
-
-            # metrics
-            ave_loss = torch.sum(loss) / self.args.pred_len
-            ave_losses.append(ave_loss)
-
-            final_loss = loss[0, -1, 0]
-            final_losses.append(final_loss)
-
-            ade = torch.sum(l2) / self.args.pred_len
-            ades.append(ade)
-
-            fde = l2[0, -1, 0]
-            fdes.append(fde)
-
-            # prediction
-            trajectory = dict()
-            trajectory['tag'] = i
-            trajectory['x'] = torch.squeeze(x)
-            trajectory['y'] = torch.squeeze(y)
-            trajectory['rel_x'] = torch.squeeze(rel_x)
-            trajectory['rel_y'] = torch.squeeze(rel_y)
-            trajectory['gaussian_output'] = torch.squeeze(gaussian_output)
-            trajectories.append(trajectory)
-
-        ave_loss = np.sum(np.array(ave_losses)) / len(ave_losses)
-        final_loss = np.sum(np.array(final_losses)) / len(final_losses)
-        ade = np.sum(np.array(ades)) / len(ades)
-        fde = np.sum(np.array(fdes)) / len(fdes)
-
-        # record and plot
-        self.recorder.logger.info('val: ave_loss {}, final_loss {}, ade {}, fde {}'.format(
-            ave_loss, final_loss, ade, fde
-        ))
-
-        scalars = dict()
-        scalars['ave_loss'] = ave_loss
-        scalars['final_loss'] = final_loss
-        scalars['ade'] = ade
-        scalars['fde'] = fde
-        self.recorder.writer.add_scalars('val', scalars, epoch)
-
-        if self.args.plot_trajectory:
-            if self.args.model == 'vanilla':
-                self.recorder.plot_trajectory(trajectories, step=epoch,
-                                              cat_point=self.args.total_len - self.args.pred_len - 1)
-            else:
-                raise Exception('Model {} not implemented. '.format(self.args.model))
+        # create Tester
+        val_dict = AttrDict({
+            'model': self.args.model,
+            'load_path': os.path.join(self.args.save_dir, 'temp_checkpoint_val'),
+            'obs_len': self.args.val_obs_len,
+            'pred_len': self.args.val_pred_len,
+            'sample_times': self.args.val_sample_times,
+            'test_dataset': self.args.val_dataset,
+            'silence': True,
+            'export_path': None
+        })
+        validator = Tester(val_dict, self.recorder)
+        validator.evaluate(step=epoch)
 
 
 class Tester:
@@ -229,15 +184,21 @@ class Tester:
             raise Exception('Model {} not implemented. '.format(self.args.model))
         return model
 
-    def evaluate(self):
+    def evaluate(self, step=1):
         """
         Evaluate Loaded Model with one-by-one case. Then calculate metrics and plot result.
         Global and Case metrics: ave_loss, final_loss, ave_l2, final_l2, ade, fde
         Hint: differences between l2 and destination error, l2 is based on relative dis while the other on absolute one.
+        :param step: global evaluation step. (ex. in validation, it could be epoch and in test usually is 1)
         """
-        self.recorder.logger.info('Begin Evaluation, {} test cases in total'.format(len(self.test_dataset)))
+        self.recorder.logger.info('### Begin Evaluation {}, {} test cases in total'.format(
+            step, len(self.test_dataset))
+        )
         save_list = list()
+        process = tqdm(range(len(self.test_dataset)))
         for t in range(len(self.test_dataset)):
+            process.update(n=1)
+
             raw_seq = self.test_dataset.next_batch()
             rel_raw_seq = abs_to_rel(raw_seq)
             x, y = self.model_static.evaluation_data_splitter(raw_seq, self.args.pred_len)
@@ -265,11 +226,13 @@ class Tester:
 
             msg = '{}_AveLoss_{:.3}_AveL2_{:.3}_FinalL2_{:.3}_Ade_{:.3}_Fde_{:.3}_MAde_{:.3f}_MFde_{:.3f}'.format(
                 t, ave_loss, ave_l2, final_l2, ade, fde, min_ade, min_fde)
-            self.recorder.logger.info(msg)
+            if not self.args.silence:
+                self.recorder.logger.info(msg)
 
             # plot
             record = dict()
             record['tag'] = t
+            record['step'] = step
             record['title'] = msg
             record['x'] = x
             record['y'] = y
@@ -288,6 +251,8 @@ class Tester:
 
             save_list.append(record)
 
+        process.close()
+
         # globally average metrics calculation
         self.recorder.logger.info('Calculation of Global Metrics.')
         metric_list = ['ave_loss', 'final_loss', 'ave_l2', 'final_l2', 'ade', 'fde', 'min_ade', 'min_fde']
@@ -299,9 +264,11 @@ class Tester:
 
         # plot
         self.recorder.logger.info('Plot trajectory')
-        self.recorder.plot_trajectory(save_list, step=1, cat_point=self.args.obs_len - 1)
+        self.recorder.plot_trajectory(save_list, step=step, cat_point=self.args.obs_len - 1)
 
         # export
         if self.args.export_path:
             torch.save(save_list, self.args.export_path)
             self.recorder.logger.info('Export {} Done'.format(self.args.export_path))
+
+        self.recorder.logger.info('### End Evaluation')

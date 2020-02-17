@@ -27,6 +27,9 @@ def test():
     # save
     parser.add_argument('--export_path', default=None, type=str)
 
+    # print
+    parser.add_argument('--silence', default=False, type=bool, help='Silent mode, only print global average result.')
+
     args = parser.parse_args()
     recorder = Recorder()
     tester = Tester(args, recorder)

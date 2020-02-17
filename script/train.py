@@ -4,6 +4,8 @@ import argparse
 from script.tools import Recorder
 from model.runner import Trainer
 
+sys.path.append('../')
+os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'  # not recommended
 
 # args parser
 parser = argparse.ArgumentParser()
@@ -27,7 +29,7 @@ def run():
     parser.add_argument('--embedding_size', default=128, type=int)
     parser.add_argument('--cell_size', default=128, type=int)
     parser.add_argument('--dropout', default=0.0, type=float)
-    parser.add_argument('--batch_norm', default=True, type=bool)
+    parser.add_argument('--batch_norm', default=False, type=bool)
     parser.add_argument('--bbox', default=False, type=bool)
 
     # train arguments
@@ -49,6 +51,12 @@ def run():
 
     # board
     parser.add_argument('--plot_trajectory', default=False, type=bool)
+
+    # validation arguments
+    parser.add_argument('--val_dataset', type=str)
+    parser.add_argument('--val_obs_len', type=int)
+    parser.add_argument('--val_pred_len', type=int)
+    parser.add_argument('--val_sample_times', type=int)
 
     args = parser.parse_args()
     recoder = Recorder(args.board_dir)
