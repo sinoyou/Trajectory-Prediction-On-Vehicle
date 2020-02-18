@@ -221,7 +221,8 @@ class Tester:
             x, y = self.model_static.evaluation_data_splitter(raw_seq, self.args.pred_len)
             rel_x, rel_y = self.model_static.evaluation_data_splitter(rel_raw_seq, self.args.pred_len)
 
-            all_pred_gaussian, all_rel_y_hat = self.model_static.interface(model=self.model, input_x=rel_x,
+            all_pred_gaussian, all_rel_y_hat = self.model_static.interface(model=self.model,
+                                                                           input_x=rel_x,
                                                                            pred_len=self.args.pred_len,
                                                                            sample_times=self.args.sample_times)
 
@@ -232,6 +233,7 @@ class Tester:
 
             # relative
             ave_loss = torch.sum(loss) / (self.args.pred_len * self.args.sample_times)
+            first_loss = torch.sum(loss[:, 0, :]) / self.args.sample_times
             final_loss = torch.sum(loss[:, -1, :]) / self.args.sample_times
             ave_l2 = torch.sum(l2) / (self.args.pred_len * self.args.sample_times)
             final_l2 = torch.sum(l2[:, -1, :]) / self.args.sample_times
@@ -251,20 +253,21 @@ class Tester:
             record['tag'] = t
             record['step'] = step
             record['title'] = msg
-            record['x'] = x
-            record['y'] = y
-            record['rel_x'] = rel_x
-            record['rel_y'] = rel_y
-            record['rel_y_hat'] = all_rel_y_hat
-            record['gaussian_output'] = all_pred_gaussian
-            record['ave_loss'] = ave_loss
-            record['final_loss'] = final_loss
-            record['ave_l2'] = ave_l2
-            record['final_l2'] = final_l2
-            record['ade'] = ade
-            record['fde'] = fde
-            record['min_ade'] = min_ade
-            record['min_fde'] = min_fde
+            record['x'] = x.cpu()
+            record['y'] = y.cpu()
+            record['rel_x'] = rel_x.cpu()
+            record['rel_y'] = rel_y.cpu()
+            record['rel_y_hat'] = all_rel_y_hat.cpu()
+            record['gaussian_output'] = all_pred_gaussian.cpu()
+            record['ave_loss'] = ave_loss.cpu()
+            record['final_loss'] = final_loss.cpu()
+            record['first_loss'] = first_loss.cpu()
+            record['ave_l2'] = ave_l2.cpu()
+            record['final_l2'] = final_l2.cpu()
+            record['ade'] = ade.cpu()
+            record['fde'] = fde.cpu()
+            record['min_ade'] = min_ade.cpu()
+            record['min_fde'] = min_fde.cpu()
 
             save_list.append(record)
 
@@ -272,7 +275,7 @@ class Tester:
 
         # globally average metrics calculation
         self.recorder.logger.info('Calculation of Global Metrics.')
-        metric_list = ['ave_loss', 'final_loss', 'ave_l2', 'final_l2', 'ade', 'fde', 'min_ade', 'min_fde']
+        metric_list = ['ave_loss', 'final_loss', 'first_loss', 'ave_l2', 'final_l2', 'ade', 'fde', 'min_ade', 'min_fde']
         scalars = dict()
         for metric in metric_list:
             temp = list()

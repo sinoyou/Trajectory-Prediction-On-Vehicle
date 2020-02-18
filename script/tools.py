@@ -5,6 +5,8 @@ from tensorboardX import SummaryWriter
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 
+from script.cuda import to_device
+
 
 class Recorder:
     """
@@ -90,7 +92,7 @@ def rel_to_abs(rel, start):
     :return: trajectory -> Tensor[batch_size, length, 2]
     """
     if start is None:
-        start = torch.zeros((rel.shape[0], 1, 2))
+        start = to_device(torch.zeros((rel.shape[0], 1, 2)), device=rel.device)
 
     if rel.shape[0] != start.shape[0]:
         start = start.repeat(rel.shape[0], 1, 1)

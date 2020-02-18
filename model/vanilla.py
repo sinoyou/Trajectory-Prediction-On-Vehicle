@@ -90,12 +90,13 @@ class VanillaLSTM(torch.nn.Module):
         :param sample_times: times of sampling trajectories
         :return: gaussian_output [sample_times, pred_len, 5], location_output[sample_times, pred_len, 2]
         """
+        device = input_x.device
         with torch.no_grad():
             sample_gaussian = list()
             sample_location = list()
             for _ in range(sample_times):
-                rel_y_hat = torch.zeros((1, pred_len, 2))
-                gaussian_output = torch.zeros((1, pred_len, 5))
+                rel_y_hat = to_device(torch.zeros((1, pred_len, 2)), device)
+                gaussian_output = to_device(torch.zeros((1, pred_len, 5)), device)
 
                 # initial hidden state
                 output, hc = model(input_x, hc=None)
@@ -105,15 +106,15 @@ class VanillaLSTM(torch.nn.Module):
                 for itr in range(pred_len):
                     # sampler
                     gaussian_output[0, itr, :] = get_2d_gaussian(output)
-                    rel_y_hat[0, itr, 0], rel_y_hat[0, itr, 1] = gaussian_sampler(gaussian_output[0, itr, 0].numpy(),
-                                                                                  gaussian_output[0, itr, 1].numpy(),
-                                                                                  gaussian_output[0, itr, 2].numpy(),
-                                                                                  gaussian_output[0, itr, 3].numpy(),
-                                                                                  gaussian_output[0, itr, 4].numpy())
+                    rel_y_hat[0, itr, 0], rel_y_hat[0, itr, 1] = gaussian_sampler(gaussian_output[0, itr, 0].cpu().numpy(),
+                                                                                  gaussian_output[0, itr, 1].cpu().numpy(),
+                                                                                  gaussian_output[0, itr, 2].cpu().numpy(),
+                                                                                  gaussian_output[0, itr, 3].cpu().numpy(),
+                                                                                  gaussian_output[0, itr, 4].cpu().numpy())
                     if itr == pred_len - 1:
                         break
 
-                    itr_x_rel = torch.zeros((1, 1, 2))
+                    itr_x_rel = to_device(torch.zeros((1, 1, 2)), device)
                     itr_x_rel[:, :, :] = rel_y_hat[:, itr, :]
                     output, hc = model(itr_x_rel, hc)
 

@@ -50,8 +50,8 @@ class KittiDataLoader:
             o = self.objects[obj_ptr]
             unit_in_batch = np.zeros((self.trajectory_length, 2))
             for ptr in range(seq_ptr, seq_ptr + self.trajectory_length):
-                unit_in_batch[ptr - seq_ptr][0] = o[ptr]['location'][2]
-                unit_in_batch[ptr - seq_ptr][1] = o[ptr]['location'][0]
+                unit_in_batch[ptr - seq_ptr][0] = o[ptr]['location'][0]
+                unit_in_batch[ptr - seq_ptr][1] = o[ptr]['location'][2]
 
             seq_ptr += 1
 
