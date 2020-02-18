@@ -70,7 +70,7 @@ class VanillaLSTM(torch.nn.Module):
     @staticmethod
     def evaluation_data_splitter(batch_data, pred_len):
         """
-        Split data [batch_size, total_len, 2] into datax and datay in evaluation mode
+        Split data [batch_size, total_len, 2] into datax and datay in val/evaluation mode
         :param batch_data: data to be split
         :param pred_len: lengthof trajectories in final loss calculation
         :return: datax, datay
@@ -105,11 +105,11 @@ class VanillaLSTM(torch.nn.Module):
                 for itr in range(pred_len):
                     # sampler
                     gaussian_output[0, itr, :] = get_2d_gaussian(output)
-                    rel_y_hat[0, itr, 0], rel_y_hat[0, itr, 1] = gaussian_sampler(gaussian_output[0, 0, 0].numpy(),
-                                                                                  gaussian_output[0, 0, 1].numpy(),
-                                                                                  gaussian_output[0, 0, 2].numpy(),
-                                                                                  gaussian_output[0, 0, 3].numpy(),
-                                                                                  gaussian_output[0, 0, 4].numpy())
+                    rel_y_hat[0, itr, 0], rel_y_hat[0, itr, 1] = gaussian_sampler(gaussian_output[0, itr, 0].numpy(),
+                                                                                  gaussian_output[0, itr, 1].numpy(),
+                                                                                  gaussian_output[0, itr, 2].numpy(),
+                                                                                  gaussian_output[0, itr, 3].numpy(),
+                                                                                  gaussian_output[0, itr, 4].numpy())
                     if itr == pred_len - 1:
                         break
 
