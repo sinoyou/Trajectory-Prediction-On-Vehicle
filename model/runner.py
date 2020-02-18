@@ -243,16 +243,18 @@ class Tester:
             min_ade = torch.min(torch.sum(euler, dim=[1, 2]) / self.args.pred_len)
             min_fde = torch.min(euler[:, -1, :])
 
-            msg = '{}_AveLoss_{:.3}_AveL2_{:.3}_FinalL2_{:.3}_Ade_{:.3}_Fde_{:.3}_MAde_{:.3f}_MFde_{:.3f}'.format(
-                t, ave_loss, ave_l2, final_l2, ade, fde, min_ade, min_fde)
+            msg1 = '{}_AveLoss_{:.3}_AveL2_{:.3}_FinalL2_{:.3}'.format(
+                t, ave_loss, ave_l2, final_l2)
+            msg2 = '{}_Ade_{:.3}_Fde_{:.3}_MAde_{:.3f}_MFde_{:.3f}'.format(
+                t, ade, fde, min_ade, min_fde)
             if not self.args.silence:
-                self.recorder.logger.info(msg)
+                self.recorder.logger.info(msg1 + "_" + msg2)
 
             # plot
             record = dict()
             record['tag'] = t
             record['step'] = step
-            record['title'] = msg
+            record['title'] = msg2
             record['x'] = x.cpu()
             record['y'] = y.cpu()
             record['rel_x'] = rel_x.cpu()
