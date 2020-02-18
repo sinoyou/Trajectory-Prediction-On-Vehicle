@@ -27,7 +27,7 @@ class Recorder:
         :param step: print step
         :param cat_point: 1 <= cat_point < obs_len, then point where rel_y and rel_y_hat start.
         """
-        # assert trajectories[0]['x'].ndim == 3
+        assert trajectories[0]['x'].ndim == 3
 
         progress = tqdm(range(len(trajectories)))
 
@@ -58,7 +58,10 @@ class Recorder:
             for t in range(sample_times):
                 # all paths
                 all_y_hat_cat_x = torch.cat((start.repeat(sample_times, 1, 1), all_y_hat), dim=1)
-                plt.plot(all_y_hat_cat_x[t, :, 0], all_y_hat_cat_x[t, :, 1], color='deeppink', label='y_hat')
+                if t == 0:
+                    plt.plot(all_y_hat_cat_x[t, :, 0], all_y_hat_cat_x[t, :, 1], color='deeppink', label='y_hat')
+                else:
+                    plt.plot(all_y_hat_cat_x[t, :, 0], all_y_hat_cat_x[t, :, 1], color='deeppink')
 
             plt.legend(loc=2)
             self.writer.add_figure(tag=str(tag), figure=fig, global_step=step)

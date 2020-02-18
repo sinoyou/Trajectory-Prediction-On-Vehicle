@@ -36,7 +36,7 @@ def run():
     # train arguments
     parser.add_argument('--batch_size', default=128, type=int)
     parser.add_argument('--num_epochs', default=501, type=int)
-    parser.add_argument('--learning_rate', default=1e-4, type=float)
+    parser.add_argument('--learning_rate', default=1e-3, type=float)
     parser.add_argument('--clip_threshold', default=1.5, type=float)
     parser.add_argument('--validate_every', default=10, type=int)
     parser.add_argument('--weight_decay', default=5e-5, type=float)
@@ -49,14 +49,12 @@ def run():
     parser.add_argument('--save_every', default=30, type=int)
     parser.add_argument('--restore_dir', default=None, type=str)
 
-    # board
-    parser.add_argument('--plot_trajectory', default=False, type=bool)
-
     # validation arguments
     parser.add_argument('--val_dataset', type=str)
     parser.add_argument('--val_obs_len', type=int)
     parser.add_argument('--val_pred_len', type=int)
     parser.add_argument('--val_sample_times', type=int)
+    parser.add_argument('--val_plot', default=False, type=bool)
 
     args = parser.parse_args()
     recoder = Recorder()

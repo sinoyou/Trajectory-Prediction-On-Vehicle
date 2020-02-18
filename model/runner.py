@@ -158,6 +158,7 @@ class Trainer:
             'sample_times': self.args.val_sample_times,
             'test_dataset': self.args.val_dataset,
             'silence': True,
+            'plot': self.args.val_plot,
             'export_path': None
         })
         validator = Tester(val_dict, self.recorder)
@@ -282,8 +283,9 @@ class Tester:
         self.recorder.writer.add_scalars('test', scalars, global_step=step)
 
         # plot
-        self.recorder.logger.info('Plot trajectory')
-        self.recorder.plot_trajectory(save_list, step=step, cat_point=self.args.obs_len - 1)
+        if self.args.plot:
+            self.recorder.logger.info('Plot trajectory')
+            self.recorder.plot_trajectory(save_list, step=step, cat_point=self.args.obs_len - 1)
 
         # export
         if self.args.export_path:
