@@ -27,7 +27,7 @@ class Recorder:
         :param step: print step
         :param cat_point: 1 <= cat_point < obs_len, then point where rel_y and rel_y_hat start.
         """
-        assert trajectories[0]['x'].ndim == 3
+        # assert trajectories[0]['x'].ndim == 3
 
         progress = tqdm(range(len(trajectories)))
 

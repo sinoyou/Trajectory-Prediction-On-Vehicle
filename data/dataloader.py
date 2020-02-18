@@ -4,13 +4,16 @@ import numpy as np
 import os
 import random
 
+from script.cuda import get_device, to_device
+
 
 class KittiDataLoader:
-    def __init__(self, filepath, batch_size, trajectory_length, seed=17373321):
+    def __init__(self, filepath, batch_size, trajectory_length, device, seed=17373321):
         self.count = 0
         self.batch_size = batch_size
         self.trajectory_length = trajectory_length
         self.batch_ptr = 0
+        self.device = device
 
         if not os.path.exists(filepath):
             raise Exception('{} not exist'.format(filepath))
@@ -26,7 +29,8 @@ class KittiDataLoader:
         random.shuffle(self.data, random=random.random)
 
         # print
-        print('Count = {}, Batch Size = {}, Iteration = {}'.format(self.count, self.batch_size, self.__len__()))
+        print('Count = {}, Batch Size = {}, Iteration = {}, Device = {}'.format(
+            self.count, self.batch_size, self.__len__(), self.device))
 
     def preprocess(self):
         """
@@ -63,7 +67,8 @@ class KittiDataLoader:
     def next_batch(self):
         batch_data = np.stack(self.data[self.batch_ptr:self.batch_ptr + self.batch_size], axis=0)
         self.batch_ptr += self.batch_size
-        return torch.from_numpy(batch_data).type(torch.float)
+        batch_tensor = torch.from_numpy(batch_data).type(torch.float)
+        return to_device(torch.from_numpy(batch_data).type(torch.float), self.device)
 
     def __len__(self):
         return self.count // self.batch_size

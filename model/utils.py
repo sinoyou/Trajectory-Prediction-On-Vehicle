@@ -99,7 +99,7 @@ def get_2d_gaussian(model_output):
 
 def gaussian_sampler(mux, muy, sx, sy, rho):
     """
-    Use random sampler to sampel 2D points from gaussian distribution.
+    Use random sampler to samp;e 2D points from gaussian distribution.
     :return: one 2D point (x, y)
     """
     # Extract mean

@@ -5,6 +5,7 @@ import time
 from torch import nn, optim
 import torch
 from model.utils import make_mlp, get_2d_gaussian, gaussian_sampler
+from script.cuda import get_device, to_device
 
 
 class VanillaLSTM(torch.nn.Module):
@@ -89,34 +90,35 @@ class VanillaLSTM(torch.nn.Module):
         :param sample_times: times of sampling trajectories
         :return: gaussian_output [sample_times, pred_len, 5], location_output[sample_times, pred_len, 2]
         """
-        sample_gaussian = list()
-        sample_location = list()
-        for _ in range(sample_times):
-            rel_y_hat = torch.zeros((1, pred_len, 2))
-            gaussian_output = torch.zeros((1, pred_len, 5))
+        with torch.no_grad():
+            sample_gaussian = list()
+            sample_location = list()
+            for _ in range(sample_times):
+                rel_y_hat = torch.zeros((1, pred_len, 2))
+                gaussian_output = torch.zeros((1, pred_len, 5))
 
-            # initial hidden state
-            output, hc = model(input_x, hc=None)
-            output = torch.unsqueeze(output[:, -1, :], dim=1)
+                # initial hidden state
+                output, hc = model(input_x, hc=None)
+                output = torch.unsqueeze(output[:, -1, :], dim=1)
 
-            # predict iterative
-            for itr in range(pred_len):
-                # sampler
-                gaussian_output[0, itr, :] = get_2d_gaussian(output)
-                rel_y_hat[0, itr, 0], rel_y_hat[0, itr, 1] = gaussian_sampler(gaussian_output[0, 0, 0].data,
-                                                                              gaussian_output[0, 0, 1].data,
-                                                                              gaussian_output[0, 0, 2].data,
-                                                                              gaussian_output[0, 0, 3].data,
-                                                                              gaussian_output[0, 0, 4].data)
-                if itr == pred_len - 1:
-                    break
+                # predict iterative
+                for itr in range(pred_len):
+                    # sampler
+                    gaussian_output[0, itr, :] = get_2d_gaussian(output)
+                    rel_y_hat[0, itr, 0], rel_y_hat[0, itr, 1] = gaussian_sampler(gaussian_output[0, 0, 0].numpy(),
+                                                                                  gaussian_output[0, 0, 1].numpy(),
+                                                                                  gaussian_output[0, 0, 2].numpy(),
+                                                                                  gaussian_output[0, 0, 3].numpy(),
+                                                                                  gaussian_output[0, 0, 4].numpy())
+                    if itr == pred_len - 1:
+                        break
 
-                itr_x_rel = torch.zeros((1, 1, 2))
-                itr_x_rel[:, :, :] = rel_y_hat[:, itr, :]
-                output, hc = model(itr_x_rel, hc)
+                    itr_x_rel = torch.zeros((1, 1, 2))
+                    itr_x_rel[:, :, :] = rel_y_hat[:, itr, :]
+                    output, hc = model(itr_x_rel, hc)
 
-            # add sample result
-            sample_gaussian.append(gaussian_output)
-            sample_location.append(rel_y_hat)
+                # add sample result
+                sample_gaussian.append(gaussian_output)
+                sample_location.append(rel_y_hat)
 
         return torch.cat(sample_gaussian, dim=0), torch.cat(sample_location, dim=0)

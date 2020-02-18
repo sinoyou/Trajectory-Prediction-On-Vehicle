@@ -35,7 +35,7 @@ def run():
 
     # train arguments
     parser.add_argument('--batch_size', default=128, type=int)
-    parser.add_argument('--num_epochs', default=500, type=int)
+    parser.add_argument('--num_epochs', default=501, type=int)
     parser.add_argument('--learning_rate', default=1e-4, type=float)
     parser.add_argument('--clip_threshold', default=1.5, type=float)
     parser.add_argument('--validate_every', default=10, type=int)

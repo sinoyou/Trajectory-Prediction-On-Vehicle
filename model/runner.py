@@ -8,6 +8,7 @@ from attrdict import AttrDict
 from tqdm import tqdm
 
 from data.dataloader import KittiDataLoader
+from script.cuda import get_device, to_device
 from script.tools import abs_to_rel, rel_to_abs
 from model.utils import cal_loss_by_2d_gaussian, get_2d_gaussian, l2_loss, gaussian_sampler
 from model.vanilla import VanillaLSTM
@@ -22,14 +23,16 @@ class Trainer:
         :param recorder: log information class (stdout + tensor board)
         """
         self.args = args
+        self.device = get_device()
         self.recorder = recorder
         self.model_static = None
+        self.pre_epoch = 0
         self.model, self.optimizer = self.build()
-        self.model = self.model.train(True)
+        self.model = to_device(self.model, self.device)
         self.data_loader = KittiDataLoader(self.args.train_dataset,
                                            self.args.batch_size,
-                                           self.args.total_len)
-        self.validate_data_loader = KittiDataLoader(self.args.val_dataset, 1, self.args.total_len)
+                                           self.args.total_len,
+                                           self.device)
 
     def build(self):
         """
@@ -61,6 +64,8 @@ class Trainer:
             checkpoint = torch.load(self.args.load_dir)
             model.load_state_dict(checkpoint['model'])
             optimizer.load_state_dict(checkpoint['optimizer'])
+            self.pre_epoch = checkpoint['epoch']
+            self.recorder.logger.info('Train continue from epoch {}'.format(checkpoint['epoch'] + 1))
 
         return model, optimizer
 
@@ -83,8 +88,9 @@ class Trainer:
             self.optimizer.step()
             return ave_loss, loss
 
-        for epoch in range(self.args.num_epochs):
-            self.recorder.logger.info(' >>> Starting epoch {}'.format(epoch))
+        self.recorder.logger.info(' >>> Starting training')
+        # pre_epoch: restore from loaded model
+        for epoch in range(self.pre_epoch, self.pre_epoch + self.args.num_epochs):
             start_time = time.time()
             batch_num = len(self.data_loader)
 
@@ -115,8 +121,9 @@ class Trainer:
             # print
             self.recorder.writer.add_scalar('train_loss', ave_loss, epoch)
             if epoch >= 0 and epoch % self.args.print_every == 0:
-                self.recorder.logger.info('Epoch {}, Train_Loss {}, Time {}'.format(
+                self.recorder.logger.info('Epoch {} / {}, Train_Loss {}, Time {}'.format(
                     epoch,
+                    self.args.num_epochs,
                     ave_loss,
                     end_time - start_time
                 ))
@@ -124,6 +131,7 @@ class Trainer:
             if epoch > 0 and epoch % self.args.save_every == 0:
                 checkpoint['model'] = self.model.state_dict()
                 checkpoint['optimizer'] = self.optimizer.state_dict()
+                checkpoint['epoch'] = epoch
                 if not os.path.exists(self.args.save_dir):
                     os.makedirs(self.args.save_dir)
                 checkpoint_path = os.path.join(self.args.save_dir,
@@ -160,10 +168,14 @@ class Tester:
     def __init__(self, args, recorder):
         self.args = args
         self.recorder = recorder
-        self.test_dataset = KittiDataLoader(self.args.test_dataset, 1, self.args.obs_len + self.args.pred_len)
+        self.device = torch.device('cpu')
+        self.test_dataset = KittiDataLoader(self.args.test_dataset,
+                                            1,
+                                            self.args.obs_len + self.args.pred_len,
+                                            self.device)
         self.model_static = None
         self.sampler = gaussian_sampler
-        self.model = self.restore_model().train(False)
+        self.model = to_device(self.restore_model().train(False), self.device)
 
     def restore_model(self) -> torch.nn.Module:
         """
@@ -260,11 +272,14 @@ class Tester:
         # globally average metrics calculation
         self.recorder.logger.info('Calculation of Global Metrics.')
         metric_list = ['ave_loss', 'final_loss', 'ave_l2', 'final_l2', 'ade', 'fde', 'min_ade', 'min_fde']
+        scalars = dict()
         for metric in metric_list:
             temp = list()
             for record in save_list:
                 temp.append(record[metric])
             self.recorder.logger.info('{} : {}'.format(metric, sum(temp) / len(temp)))
+            scalars[metric] = sum(temp) / len(temp)
+        self.recorder.writer.add_scalars('test', scalars, global_step=step)
 
         # plot
         self.recorder.logger.info('Plot trajectory')
