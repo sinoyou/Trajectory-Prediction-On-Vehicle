@@ -60,8 +60,8 @@ class Trainer:
                                      weight_decay=self.args.weight_decay)
 
         if self.args.restore_dir and os.path.exists(self.args.restore_dir):
-            self.recorder.logger.info('Restoring from {}'.format(self.args.load_dir))
-            checkpoint = torch.load(self.args.load_dir)
+            self.recorder.logger.info('Restoring from {}'.format(self.args.restore_dir))
+            checkpoint = torch.load(self.args.restore_dir)
             model.load_state_dict(checkpoint['model'])
             optimizer.load_state_dict(checkpoint['optimizer'])
             self.pre_epoch = checkpoint['epoch']
@@ -90,7 +90,7 @@ class Trainer:
 
         self.recorder.logger.info(' >>> Starting training')
         # pre_epoch: restore from loaded model
-        for epoch in range(self.pre_epoch, self.pre_epoch + self.args.num_epochs):
+        for epoch in range(self.pre_epoch + 1, self.pre_epoch + self.args.num_epochs + 1):
             start_time = time.time()
             batch_num = len(self.data_loader)
 
