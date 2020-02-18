@@ -2,6 +2,8 @@ from torch import nn
 import torch
 from model.utils import make_mlp
 
+from model.utils import get_2d_gaussian, gaussian_sampler
+
 
 class Seq2SeqLSTM(torch.nn.Module):
     def __init__(self, input_dim=2, output_dim=5,
@@ -27,26 +29,102 @@ class Seq2SeqLSTM(torch.nn.Module):
         self.output_emd_layer = make_mlp([self.cell_size, self.output_dim], activation=None)
         self.encoder = nn.LSTM(self.emd_size, self.cell_size, batch_first=True)
         self.decoder_cell = nn.LSTMCell(self.emd_size, self.cell_size)
+        # self.decoder = nn.LSTM(self.cell_size, self.cell_size, batch_first=True)
 
     def forward(self, inputs, output_parser=None):
         """
         :param inputs: shape as [batch_size, obs_length, input_dim]
-        :param output_parser: differential operation, parse output of each step into input_dim format
-         which can be accepted as next input to decoder cell.
+        :param output_parser: parse output (indifferential) when doing interface.
         :return: outputs [batch_size, pred_length, output_dim]
         """
         assert inputs.shape(2) == self.input_dim
         # encoding
-        output, hx = self.encoder(inputs)
+        output, hc = self.encoder(inputs)
+
+        # # decoding - legacy
+        # h = hc[0]
+        # dec_input = h.repeat((self.pred_length, 1, 1))
+        # dec_output, dec_hc = self.decoder(dec_input)
+        # outputs = list()
+        # for step in range(self.pred_length):
+        #     output = torch.squeeze(dec_output[:, step, :], dim=1)
+        #     emd_output = self.output_emd_layer(output)
+        #     outputs.append(emd_output)
 
         # decoding
         outputs = []
-        hx = hx
+        hx = hc[0]
         prev_pos = inputs[:, -1, :]
         for step in range(self.pred_length):
             emd_input = self.input_emd_layer(prev_pos)
             hx = self.decoder_cell(input=emd_input, hx=hx)
             emd_output = self.output_emd_layer(hx[0])
-            prev_pos = output_parser(emd_output)
+            if not output_parser:
+                prev_pos = output_parser(emd_output)
+            else:
+                prev_pos = emd_output[:, 0:2]
             outputs.append(emd_output)
+
         return torch.stack(outputs, dim=1)
+
+    @staticmethod
+    def train_data_splitter(batch_data, pred_len):
+        """
+        Split data [batch_size, total_len, 2] into datax and datay in train mode
+        :param batch_data: data to be split
+        :param pred_len: length of trajectories in final loss calculation
+        :return: datax, datay
+        """
+        return batch_data[:, :-pred_len, :], batch_data[:, -pred_len:, :]
+
+    @staticmethod
+    def evaluation_data_splitter(batch_data, pred_len):
+        """
+        Split data [batch_size, total_len, 2] into datax and datay in val/evaluation mode
+        :param batch_data: data to be split
+        :param pred_len: lengthof trajectories in final loss calculation
+        :return: datax, datay
+        """
+        return batch_data[:, :-pred_len, :], batch_data[:, -pred_len:, :]
+
+    @staticmethod
+    def interface(model, input_x, pred_len, sample_times):
+        """
+        During evaluation, use trained model to interface.
+        :param model: Loaded Vanilla Model
+        :param input_x: obs data [1, obs_len, 2]
+        :param pred_len: length of prediction
+        :param sample_times: times of sampling trajectories
+        :return: gaussian_output [sample_times, pred_len, 5], location_output[sample_times, pred_len, 2]
+        """
+        sample_gaussian = list()
+        sample_location = list()
+
+        def interface_output_parser(x):
+            """
+            Only used in interface!
+            :param x: (1, 5)
+            """
+            x = get_2d_gaussian(x)
+            return gaussian_sampler(x[0], x[1], x[2], x[3], x[4])
+
+        with torch.no_grad():
+            for _ in range(sample_times):
+                model_outputs = model(input_x, interface_output_parser)
+
+                gaussian_output = torch.zeros((1, pred_len, 5))
+                rel_y_hat = torch.zeros((1, pred_len, 2))
+
+                for itr in range(pred_len):
+                    model_output = model_outputs[:, itr, :]
+                    gaussian_output[:, itr, :] = get_2d_gaussian(model_output=model_output)
+                    rel_y_hat[0, itr, 0], rel_y_hat[0, itr, 1] = gaussian_sampler(gaussian_output[0, itr, 0].numpy(),
+                                                                                  gaussian_output[0, itr, 1].numpy(),
+                                                                                  gaussian_output[0, itr, 2].numpy(),
+                                                                                  gaussian_output[0, itr, 3].numpy(),
+                                                                                  gaussian_output[0, itr, 4].numpy())
+
+                sample_gaussian.append(gaussian_output)
+                sample_location.append(rel_y_hat)
+
+        return torch.cat(sample_gaussian, dim=0), torch.cat(sample_location, dim=0)
