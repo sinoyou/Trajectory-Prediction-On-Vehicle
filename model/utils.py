@@ -89,11 +89,11 @@ def get_2d_gaussian(model_output):
     :param model_output: Tensor[batch_size, pred_length, 5]
     :return: gaussian_output -> Tensor[batch_size, pred_length, 5]
     """
-    mu_x = model_output[:, :, 0]
-    mu_y = model_output[:, :, 1]
-    sigma_x = torch.exp(model_output[:, :, 2])
-    sigma_y = torch.exp(model_output[:, :, 3])
-    cor = torch.tanh(model_output[:, :, 4])
+    mu_x = model_output[..., 0]
+    mu_y = model_output[..., 1]
+    sigma_x = torch.exp(model_output[..., 2])
+    sigma_y = torch.exp(model_output[..., 3])
+    cor = torch.tanh(model_output[..., 4])
     return torch.stack((mu_x, mu_y, sigma_x, sigma_y, cor), dim=-1)
 
 

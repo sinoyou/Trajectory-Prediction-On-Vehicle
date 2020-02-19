@@ -49,6 +49,14 @@ class Trainer:
                                     cell_size=self.args.cell_size,
                                     batch_norm=self.args.batch_norm,
                                     dropout=self.args.dropout)
+            elif self.args.model == 'seq2seq':
+                self.model_static = Seq2SeqLSTM
+                model = Seq2SeqLSTM(input_dim=2,
+                                    output_dim=5,
+                                    emd_size=self.args.embedding_size,
+                                    cell_size=self.args.cell_size,
+                                    batch_norm=self.args.batch_norm,
+                                    dropout=self.args.dropout)
             else:
                 raise Exception('Model {} not implemented.'.format(self.args.model))
         else:
@@ -196,9 +204,19 @@ class Tester:
                                 cell_size=train_args.cell_size,
                                 batch_norm=train_args.batch_norm,
                                 dropout=train_args.dropout)
-            model.load_state_dict(checkpoint['model'])
+        elif self.args.model == 'seq2seq':
+            self.model_static = Seq2SeqLSTM
+            model = Seq2SeqLSTM(input_dim=2,
+                                output_dim=5,
+                                emd_size=train_args.embedding_size,
+                                cell_size=train_args.cell_size,
+                                batch_norm=train_args.batch_norm,
+                                dropout=train_args.dropout)
         else:
             raise Exception('Model {} not implemented. '.format(self.args.model))
+
+        model.load_state_dict(checkpoint['model'])
+
         return model
 
     def evaluate(self, step=1):

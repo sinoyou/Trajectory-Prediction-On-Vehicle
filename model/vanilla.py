@@ -106,11 +106,12 @@ class VanillaLSTM(torch.nn.Module):
                 for itr in range(pred_len):
                     # sampler
                     gaussian_output[0, itr, :] = get_2d_gaussian(output)
-                    rel_y_hat[0, itr, 0], rel_y_hat[0, itr, 1] = gaussian_sampler(gaussian_output[0, itr, 0].cpu().numpy(),
-                                                                                  gaussian_output[0, itr, 1].cpu().numpy(),
-                                                                                  gaussian_output[0, itr, 2].cpu().numpy(),
-                                                                                  gaussian_output[0, itr, 3].cpu().numpy(),
-                                                                                  gaussian_output[0, itr, 4].cpu().numpy())
+                    rel_y_hat[0, itr, 0], rel_y_hat[0, itr, 1] = gaussian_sampler(
+                        gaussian_output[0, itr, 0].cpu().numpy(),
+                        gaussian_output[0, itr, 1].cpu().numpy(),
+                        gaussian_output[0, itr, 2].cpu().numpy(),
+                        gaussian_output[0, itr, 3].cpu().numpy(),
+                        gaussian_output[0, itr, 4].cpu().numpy())
                     if itr == pred_len - 1:
                         break
 
