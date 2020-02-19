@@ -4,7 +4,7 @@ import time
 
 from torch import nn, optim
 import torch
-from model.utils import make_mlp, get_2d_gaussian, gaussian_sampler
+from model.utils import make_mlp, get_2d_gaussian, gaussian_sampler, neg_likelihood_gaussian_pdf_loss
 from script.cuda import get_device, to_device
 
 
@@ -79,6 +79,22 @@ class VanillaLSTM(torch.nn.Module):
         datax = batch_data[:, 0:-pred_len, :]
         datay = batch_data[:, -pred_len:, :]
         return datax, datay
+
+    @staticmethod
+    def train_step(vanilla, data, pred_len) -> [torch.Tensor(), torch.Tensor()]:
+        """
+        Run one train step
+        :param vanilla: vanilla model
+        :param data: [batch_size, total_len, 2]
+        :param pred_len: length of prediction
+        :return: dict()
+        """
+        datax, datay = VanillaLSTM.train_data_splitter(data, pred_len)
+        model_output, _ = vanilla(datax, hx=None)
+        gaussian_output = get_2d_gaussian(model_output=model_output)
+        gaussian_output = gaussian_output[:, -pred_len:, :]
+        loss = neg_likelihood_gaussian_pdf_loss(gaussian_output, datay)
+        return {'loss': loss, 'gaussian_output': gaussian_output}
 
     @staticmethod
     def interface(model, input_x, pred_len, sample_times):

@@ -10,7 +10,7 @@ from tqdm import tqdm
 from data.dataloader import KittiDataLoader
 from script.cuda import get_device, to_device
 from script.tools import abs_to_rel, rel_to_abs
-from model.utils import cal_loss_by_2d_gaussian, get_2d_gaussian, l2_loss, gaussian_sampler
+from model.utils import neg_likelihood_gaussian_pdf_loss, get_2d_gaussian, l2_loss, gaussian_sampler
 from model.vanilla import VanillaLSTM
 from model.seq2seq import Seq2SeqLSTM
 
@@ -25,7 +25,6 @@ class Trainer:
         self.args = args
         self.device = get_device()
         self.recorder = recorder
-        self.model_static = None
         self.pre_epoch = 0
         self.model, self.optimizer = self.build()
         self.model = to_device(self.model, self.device)
@@ -42,7 +41,6 @@ class Trainer:
         # model
         if not self.args.bbox:
             if self.args.model == 'vanilla':
-                self.model_static = VanillaLSTM
                 model = VanillaLSTM(input_dim=2,
                                     output_dim=5,
                                     emd_size=self.args.embedding_size,
@@ -50,7 +48,6 @@ class Trainer:
                                     batch_norm=self.args.batch_norm,
                                     dropout=self.args.dropout)
             elif self.args.model == 'seq2seq':
-                self.model_static = Seq2SeqLSTM
                 model = Seq2SeqLSTM(input_dim=2,
                                     output_dim=5,
                                     emd_size=self.args.embedding_size,
@@ -67,6 +64,7 @@ class Trainer:
                                      lr=self.args.learning_rate,
                                      weight_decay=self.args.weight_decay)
 
+        # restore
         if self.args.restore_dir and os.path.exists(self.args.restore_dir):
             self.recorder.logger.info('Restoring from {}'.format(self.args.restore_dir))
             checkpoint = torch.load(self.args.restore_dir)
@@ -84,19 +82,8 @@ class Trainer:
         checkpoint = dict()
         checkpoint['args'] = self.args
 
-        def loss_and_step(gaussian_output, datay):
-            loss = cal_loss_by_2d_gaussian(gaussian_output, datay)
-            ave_loss = torch.sum(loss) / self.args.pred_len / self.args.batch_size
-
-            self.optimizer.zero_grad()
-            ave_loss.backward()
-            if self.args.clip_threshold > 0:
-                torch.nn.utils.clip_grad_norm(self.model.parameters(),
-                                              self.args.clip_threshold)
-            self.optimizer.step()
-            return ave_loss, loss
-
         self.recorder.logger.info(' >>> Starting training')
+
         # pre_epoch: restore from loaded model
         for epoch in range(self.pre_epoch + 1, self.pre_epoch + self.args.num_epochs + 1):
             start_time = time.time()
@@ -108,13 +95,15 @@ class Trainer:
                 # load data
                 data = self.data_loader.next_batch()
                 rel_data = abs_to_rel(data)
-                x, y = self.model_static.train_data_splitter(data, self.args.pred_len)
-                rel_x, rel_y = self.model_static.train_data_splitter(rel_data, self.args.pred_len)
-                # model forward and backward
-                model_output, _ = self.model(rel_x)
-                gaussian_output = get_2d_gaussian(model_output=model_output)
-                gaussian_output = gaussian_output[:, -self.args.pred_len:, :]
-                ave_loss, loss = loss_and_step(gaussian_output, rel_y)
+                # model forward
+                result = self.model.train_step(self.model, data, self.args.pred_len)
+                ave_loss = result['loss'] / (self.args.batch_size * self.args.pred_len)
+                # backward
+                self.optimizer.zero_grad()
+                ave_loss.backward()
+                if self.args.clip_threshold > 0:
+                    torch.nn.utils.clip_grad_norm(self.model.parameters(), self.args.clip_threshold)
+                self.optimizer.step()
                 loss_list.append(ave_loss)
 
             end_time = time.time()
@@ -245,7 +234,7 @@ class Tester:
                                                                            sample_times=self.args.sample_times)
 
             # metric calculate
-            loss = cal_loss_by_2d_gaussian(all_pred_gaussian, rel_y)
+            loss = neg_likelihood_gaussian_pdf_loss(all_pred_gaussian, rel_y)
             l2 = l2_loss(all_rel_y_hat, rel_y)
             euler = l2_loss(rel_to_abs(all_rel_y_hat, start=None), rel_to_abs(rel_y, start=None))
 

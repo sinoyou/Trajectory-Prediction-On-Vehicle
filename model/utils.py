@@ -3,18 +3,6 @@ import torch
 import numpy as np
 
 
-def l2_loss(pred_traj, pred_traj_gt):
-    """
-    Input:
-    - pred_traj: Tensor of shape (batch, seq_len, 2). Predicted trajectory.
-    - pred_traj_gt: Tensor of shape (1/batch, seq_len, 2). Ground truth predictions.
-    Output:
-    - loss: l2 loss [batch, seq_len, 1]
-    """
-    loss = (pred_traj_gt - pred_traj) ** 2
-    return torch.sqrt(torch.sum(loss, dim=2, keepdim=True))
-
-
 def make_mlp(dim_list, activation='relu', batch_norm=False, dropout=0):
     """Factory for multi-layer perceptron."""
     layers = []
@@ -31,7 +19,19 @@ def make_mlp(dim_list, activation='relu', batch_norm=False, dropout=0):
     return nn.Sequential(*layers)
 
 
-def cal_loss_by_2d_gaussian(gaussian_output, target):
+def l2_loss(pred_traj, pred_traj_gt):
+    """
+    Input:
+    - pred_traj: Tensor of shape (batch, seq_len, 2). Predicted trajectory.
+    - pred_traj_gt: Tensor of shape (1/batch, seq_len, 2). Ground truth predictions.
+    Output:
+    - loss: l2 loss [batch, seq_len, 1]
+    """
+    loss = (pred_traj_gt - pred_traj) ** 2
+    return torch.sqrt(torch.sum(loss, dim=2, keepdim=True))
+
+
+def neg_likelihood_gaussian_pdf_loss(gaussian_output, target):
     """
     Negative log likelihood loss based on 2D Gaussian Distribution
     :param gaussian_output: Tensor[batch_size, pred_length, 5] [mu_x, mu_y, sigma_x, sigma_y, cor]

@@ -48,6 +48,7 @@ class Recorder:
             start = torch.unsqueeze(single_x[:, cat_point, :], dim=1)
             all_y_hat = rel_to_abs(all_rel_y_hat, start=start)
 
+
             if 'title' in trajectory.keys():
                 plt.title(trajectory['title'], fontsize=10)
 

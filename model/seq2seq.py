@@ -2,7 +2,7 @@ from torch import nn
 import torch
 from model.utils import make_mlp
 
-from model.utils import get_2d_gaussian, gaussian_sampler
+from model.utils import get_2d_gaussian, gaussian_sampler, neg_likelihood_gaussian_pdf_loss
 from script.cuda import to_device
 
 
@@ -79,7 +79,7 @@ class Seq2SeqLSTM(torch.nn.Module):
                 prev_pos = emd_output[:, 0:2]
             outputs.append(emd_output)
 
-        return torch.stack(outputs, dim=1), hx[0]
+        return torch.stack(outputs, dim=1)
 
     @staticmethod
     def train_data_splitter(batch_data, pred_len):
@@ -100,6 +100,21 @@ class Seq2SeqLSTM(torch.nn.Module):
         :return: datax, datay
         """
         return batch_data[:, :-pred_len, :], batch_data[:, -pred_len:, :]
+
+    @staticmethod
+    def train_step(seq2seq, data, pred_len, *args, **kwargs):
+        """
+        Run one train step.
+        :param seq2seq: model
+        :param data: [batch_size, total_len, 2]
+        :param pred_len: length of prediction involving loss calculation.
+        :return: dict()
+        """
+        datax, datay = Seq2SeqLSTM.train_data_splitter(data, pred_len)
+        model_output = seq2seq(datax)
+        gaussian_output = get_2d_gaussian(model_output=model_output)
+        loss = neg_likelihood_gaussian_pdf_loss(gaussian_output=gaussian_output, target=datay)
+        return {'loss': loss, 'gaussian_output': gaussian_output}
 
     @staticmethod
     def interface(model, input_x, pred_len, sample_times):
