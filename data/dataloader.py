@@ -5,6 +5,7 @@ import os
 import random
 
 from script.cuda import get_device, to_device
+from script.tools import rel_to_abs, abs_to_rel
 
 
 class KittiDataLoader:
@@ -67,8 +68,24 @@ class KittiDataLoader:
     def next_batch(self):
         batch_data = np.stack(self.data[self.batch_ptr:self.batch_ptr + self.batch_size], axis=0)
         self.batch_ptr += self.batch_size
-        batch_tensor = torch.from_numpy(batch_data).type(torch.float)
-        return to_device(torch.from_numpy(batch_data).type(torch.float), self.device)
+        batch_data = torch.from_numpy(batch_data).type(torch.float).to(self.device)
+        rel_batch_data = abs_to_rel(batch_data)
+        return {'data': batch_data, 'rel_data': rel_batch_data}
+
+    @staticmethod
+    def post_process(y_hat, **kwargs):
+        """
+        Process model generated trajectories points.
+            1. from relative to absolute.
+        :param y_hat:
+        :param kwargs:
+        :return:
+        """
+        post_y_hat = y_hat
+        # post process relative to absolute
+        if 'start' not in kwargs.keys():
+            post_y_hat = rel_to_abs(post_y_hat, kwargs['start'])
+        return post_y_hat
 
     def __len__(self):
         return self.count // self.batch_size

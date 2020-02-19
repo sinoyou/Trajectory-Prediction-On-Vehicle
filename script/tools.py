@@ -38,33 +38,28 @@ class Recorder:
             progress.update(1)
             tag = trajectory['tag']
             all_gaussian_output = trajectory['gaussian_output']  # todo draw heat-map
-            all_rel_y_hat = trajectory['rel_y_hat']
-            single_x = trajectory['x']
-            single_y = trajectory['y']
-            single_x_rel = trajectory['rel_x']
-            single_y_rel = trajectory['rel_y']
+            abs_y_hat = trajectory['abs_y_hat']
+            abs_x = trajectory['abs_x']
+            abs_y = trajectory['abs_y']
 
-            # calc absolute shift from [0, 0]
-            start = torch.unsqueeze(single_x[:, cat_point, :], dim=1)
-            all_y_hat = rel_to_abs(all_rel_y_hat, start=start)
-
-
+            start = torch.unsqueeze(abs_x[:, cat_point, :], dim=1)
             if 'title' in trajectory.keys():
                 plt.title(trajectory['title'], fontsize=10)
 
             # plot observed and ground truth trajectory
-            plt.plot(single_x[0, :, 0], single_x[0, :, 1], color='darkblue', label='x')
-            y_cat_x = torch.cat((start, single_y), dim=1)
+            plt.plot(abs_x[0, :, 0], abs_x[0, :, 1], color='darkblue', label='x')
+            y_cat_x = torch.cat((start, abs_y), dim=1)
             plt.plot(y_cat_x[0, :, 0], y_cat_x[0, :, 1], color='goldenrod', label='y_gt')
+
             # plot predicted trajectories(may sample many times)
-            sample_times = all_y_hat.shape[0]
+            sample_times = abs_y_hat.shape[0]
             for t in range(sample_times):
                 # all paths
-                all_y_hat_cat_x = torch.cat((start.repeat(sample_times, 1, 1), all_y_hat), dim=1)
+                abs_y_hat_cat_x = torch.cat((start.repeat(sample_times, 1, 1), abs_y_hat), dim=1)
                 if t == 0:
-                    plt.plot(all_y_hat_cat_x[t, :, 0], all_y_hat_cat_x[t, :, 1], color='deeppink', label='y_hat')
+                    plt.plot(abs_y_hat_cat_x[t, :, 0], abs_y_hat_cat_x[t, :, 1], color='deeppink', label='y_hat')
                 else:
-                    plt.plot(all_y_hat_cat_x[t, :, 0], all_y_hat_cat_x[t, :, 1], color='deeppink')
+                    plt.plot(abs_y_hat_cat_x[t, :, 0], abs_y_hat_cat_x[t, :, 1], color='deeppink')
 
             plt.legend(loc=2)
             self.writer.add_figure(tag=str(tag), figure=fig, global_step=step)
