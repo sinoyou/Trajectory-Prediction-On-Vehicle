@@ -22,7 +22,7 @@ matplotlib
 
 ## 模型
 
-当前模型实现了Vanilla和Seq2Seq两种模型，主要差异在于是否在训练时构成了Encoder-Decoder结构。
+当前模型实现了Vanilla和Seq2Seq两种模型，主要差异在于是否在训练时构成了Encoder-Decoder结构。模型推理的模块可拔插，既可以作为训练时验证，又可以单独作为测试使用。
 
 ### Vanilla模型
 
