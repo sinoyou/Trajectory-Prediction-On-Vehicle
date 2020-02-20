@@ -50,6 +50,9 @@ class Seq2SeqLSTM(torch.nn.Module):
         assert inputs.shape[2] == self.input_dim
         seq_len = inputs.shape[1]
 
+        # save the last observed trajectory in advance, in case of batch norm.
+        prev_pos = inputs[:, -1, :]
+
         # normalization
         if self.input_norm:
             inputs = inputs.reshape(-1, 2)
@@ -77,7 +80,6 @@ class Seq2SeqLSTM(torch.nn.Module):
         outputs = []
         hx = torch.squeeze(hc[0], dim=0)
         hx = (hx, torch.zeros_like(hx, device=hx.device))  # (h, c=0)
-        prev_pos = inputs[:, -1, :]
         for step in range(self.pred_length):
             emd_input = self.input_emd_layer(prev_pos)
             hx = self.decoder_cell(input=emd_input, hx=hx)
