@@ -15,7 +15,7 @@ class Seq2SeqLSTM(torch.nn.Module):
                  dropout=0.0):
         """
         Implement of Seq2Seq LSTM structure
-        Input sequence length can vary!
+        Input sequence length can vary
         :param input_dim: 2
         :param output_dim: 5 as 2D Gaussian Distribution
         :param pred_length: 4
@@ -31,6 +31,7 @@ class Seq2SeqLSTM(torch.nn.Module):
         self.emd_size = emd_size
         self.cell_size = cell_size
 
+        self.input_norm = torch.nn.BatchNorm1d(self.input_dim) if batch_norm else None
         self.input_emd_layer = make_mlp([self.input_dim, self.emd_size],
                                         activation='rule', batch_norm=batch_norm, dropout=dropout)
         self.output_emd_layer = make_mlp([self.cell_size, self.output_dim],
@@ -46,8 +47,15 @@ class Seq2SeqLSTM(torch.nn.Module):
         :return: outputs [batch_size, pred_length, output_dim]
         """
         assert inputs.shape[2] == self.input_dim
-        # encoding
         seq_len = inputs.shape[1]
+
+        # normalization
+        if self.input_norm:
+            inputs = inputs.reshape(-1, 2)
+            inputs = self.input_norm(inputs)
+            inputs = inputs.view((-1, seq_len, self.input_dim))
+
+        # encoding
         padded_inputs = inputs.reshape((-1, self.input_dim))
         embedding_inputs = self.input_emd_layer(padded_inputs)
         embedding_inputs = embedding_inputs.view((-1, seq_len, self.emd_size))
@@ -102,26 +110,24 @@ class Seq2SeqLSTM(torch.nn.Module):
         return batch_data[:, :-pred_len, :], batch_data[:, -pred_len:, :]
 
     @staticmethod
-    def train_step(seq2seq, data, pred_len, *args, **kwargs):
+    def train_step(seq2seq, x, pred_len, *args, **kwargs):
         """
         Run one train step.
         :param seq2seq: model
-        :param data: [batch_size, total_len, 2]
+        :param x: [batch_size, obs_len, 2]
         :param pred_len: length of prediction involving loss calculation.
         :return: dict()
         """
-        datax, datay = Seq2SeqLSTM.train_data_splitter(data, pred_len)
-        model_output = seq2seq(datax)
+        model_output = seq2seq(x)
         gaussian_output = get_2d_gaussian(model_output=model_output)
-        loss = neg_likelihood_gaussian_pdf_loss(gaussian_output=gaussian_output, target=datay)
-        return {'loss': loss, 'gaussian_output': gaussian_output}
+        return {'gaussian_output': gaussian_output}
 
     @staticmethod
-    def interface(model, input_x, pred_len, sample_times):
+    def interface(model, datax, pred_len, sample_times):
         """
         During evaluation, use trained model to interface.
         :param model: Loaded Vanilla Model
-        :param input_x: obs data [1, obs_len, 2]
+        :param datax: obs data [1, obs_len, 2]
         :param pred_len: length of prediction
         :param sample_times: times of sampling trajectories
         :return: gaussian_output [sample_times, pred_len, 5], location_output[sample_times, pred_len, 2]
@@ -140,10 +146,10 @@ class Seq2SeqLSTM(torch.nn.Module):
 
         with torch.no_grad():
             for _ in range(sample_times):
-                model_outputs, _ = model(input_x, interface_output_parser)
+                model_outputs= model(datax, interface_output_parser)
 
-                gaussian_output = to_device(torch.zeros((1, pred_len, 5)), input_x.device)
-                rel_y_hat = to_device(torch.zeros((1, pred_len, 2)), input_x.device)
+                gaussian_output = to_device(torch.zeros((1, pred_len, 5)), datax.device)
+                rel_y_hat = to_device(torch.zeros((1, pred_len, 2)), datax.device)
 
                 for itr in range(pred_len):
                     model_output = model_outputs[:, itr, :]

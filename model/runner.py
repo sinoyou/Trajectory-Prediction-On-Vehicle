@@ -3,13 +3,11 @@ import torch
 import os
 import argparse
 import time
-import random
 from attrdict import AttrDict
 from tqdm import tqdm
 
 from data.dataloader import KittiDataLoader
 from script.cuda import get_device, to_device
-from script.tools import abs_to_rel, rel_to_abs
 from model.utils import neg_likelihood_gaussian_pdf_loss, get_2d_gaussian, l2_loss, gaussian_sampler
 from model.vanilla import VanillaLSTM
 from model.seq2seq import Seq2SeqLSTM
@@ -31,7 +29,8 @@ class Trainer:
         self.data_loader = KittiDataLoader(self.args.train_dataset,
                                            self.args.batch_size,
                                            self.args.total_len,
-                                           self.device)
+                                           self.device,
+                                           self.args.relative)
 
     def build(self):
         """
@@ -93,11 +92,18 @@ class Trainer:
             self.data_loader.reset_ptr()
             for itr in range(batch_num):
                 # load data
-                data = self.data_loader.next_batch()
-                rel_data = abs_to_rel(data)
-                # model forward
-                result = self.model.train_step(self.model, data, self.args.pred_len)
-                ave_loss = result['loss'] / (self.args.batch_size * self.args.pred_len)
+                batch = self.data_loader.next_batch()
+                if self.args.relative:
+                    data = batch['rel_data']
+                else:
+                    data = batch['data']
+                x, y = self.model.train_data_splitter(data, self.args.pred_len)
+
+                # forward
+                result = self.model.train_step(self.model, x, self.args.pred_len)
+                loss = neg_likelihood_gaussian_pdf_loss(result['gaussian_output'], y)
+                ave_loss = torch.sum(loss) / (self.args.batch_size * self.args.pred_len)
+
                 # backward
                 self.optimizer.zero_grad()
                 ave_loss.backward()
@@ -156,6 +162,7 @@ class Trainer:
             'test_dataset': self.args.val_dataset,
             'silence': True,
             'plot': self.args.val_plot,
+            'relative': self.args.relative,
             'export_path': None
         })
         validator = Tester(val_dict, self.recorder)
@@ -170,8 +177,8 @@ class Tester:
         self.test_dataset = KittiDataLoader(self.args.test_dataset,
                                             1,
                                             self.args.obs_len + self.args.pred_len,
-                                            self.device)
-        self.model_static = None
+                                            self.device,
+                                            self.args.relative)
         self.sampler = gaussian_sampler
         self.model = to_device(self.restore_model().train(False), self.device)
 
@@ -186,7 +193,7 @@ class Tester:
         checkpoint = torch.load(self.args.load_path)
         train_args = checkpoint['args']
         if self.args.model == 'vanilla':
-            self.model_static = VanillaLSTM
+            self.model = VanillaLSTM
             model = VanillaLSTM(input_dim=2,
                                 output_dim=5,
                                 emd_size=train_args.embedding_size,
@@ -194,7 +201,7 @@ class Tester:
                                 batch_norm=train_args.batch_norm,
                                 dropout=train_args.dropout)
         elif self.args.model == 'seq2seq':
-            self.model_static = Seq2SeqLSTM
+            self.model = Seq2SeqLSTM
             model = Seq2SeqLSTM(input_dim=2,
                                 output_dim=5,
                                 emd_size=train_args.embedding_size,
@@ -223,28 +230,40 @@ class Tester:
         for t in range(len(self.test_dataset)):
             process.update(n=1)
 
-            raw_seq = self.test_dataset.next_batch()
-            rel_raw_seq = abs_to_rel(raw_seq)
-            x, y = self.model_static.evaluation_data_splitter(raw_seq, self.args.pred_len)
-            rel_x, rel_y = self.model_static.evaluation_data_splitter(rel_raw_seq, self.args.pred_len)
+            batch = self.test_dataset.next_batch()
+            data, rel_data = batch['data'], batch['rel_data']
+            if self.args.relative:
+                x, y = self.model.evaluation_data_splitter(rel_data, self.args.pred_len)
+                pred_gaussian, y_hat = self.model.interface(model=self.model,
+                                                            datax=x,
+                                                            pred_len=self.args.pred_len,
+                                                            sample_times=self.args.sample_times)
+                # data post process
+                abs_x, abs_y = self.model.evaluation_data_splitter(data, self.args.pred_len)
+                abs_y_hat = self.test_dataset.post_process(y_hat, start=torch.unsqueeze(abs_x[:, -1, :], dim=1))
 
-            all_pred_gaussian, all_rel_y_hat = self.model_static.interface(model=self.model,
-                                                                           input_x=rel_x,
-                                                                           pred_len=self.args.pred_len,
-                                                                           sample_times=self.args.sample_times)
+            else:
+                x, y = self.model.evaluation_data_splitter(data, self.args.pred_len)
+                pred_gaussian, y_hat = self.model.interface(model=self.model,
+                                                            datax=x,
+                                                            pred_len=self.args.pred_len,
+                                                            sample_times=self.args.sample_times)
+                abs_x = x
+                abs_y = y
+                abs_y_hat = y_hat
 
             # metric calculate
-            loss = neg_likelihood_gaussian_pdf_loss(all_pred_gaussian, rel_y)
-            l2 = l2_loss(all_rel_y_hat, rel_y)
-            euler = l2_loss(rel_to_abs(all_rel_y_hat, start=None), rel_to_abs(rel_y, start=None))
+            loss = neg_likelihood_gaussian_pdf_loss(pred_gaussian, y)
+            l2 = l2_loss(y_hat, y)
+            euler = l2_loss(abs_y_hat, abs_y)
 
-            # relative
+            # average metrics calculation
+            # Hint: when mode is absolute, abs_? and ? are the same, so L2 loss and destination error as well.
             ave_loss = torch.sum(loss) / (self.args.pred_len * self.args.sample_times)
             first_loss = torch.sum(loss[:, 0, :]) / self.args.sample_times
             final_loss = torch.sum(loss[:, -1, :]) / self.args.sample_times
             ave_l2 = torch.sum(l2) / (self.args.pred_len * self.args.sample_times)
             final_l2 = torch.sum(l2[:, -1, :]) / self.args.sample_times
-            # absolute
             ade = torch.sum(euler) / (self.args.pred_len * self.args.sample_times)
             fde = torch.sum(euler[:, -1, :]) / self.args.sample_times
             min_ade = torch.min(torch.sum(euler, dim=[1, 2]) / self.args.pred_len)
@@ -262,12 +281,15 @@ class Tester:
             record['tag'] = t
             record['step'] = step
             record['title'] = msg2
+
             record['x'] = x.cpu()
+            record['abs_x'] = abs_x.cpu()
             record['y'] = y.cpu()
-            record['rel_x'] = rel_x.cpu()
-            record['rel_y'] = rel_y.cpu()
-            record['rel_y_hat'] = all_rel_y_hat.cpu()
-            record['gaussian_output'] = all_pred_gaussian.cpu()
+            record['abs_y'] = abs_y.cpu()
+            record['y_hat'] = y_hat.cpu()
+            record['abs_y_hat'] = abs_y_hat.cpu()
+            record['gaussian_output'] = pred_gaussian.cpu()
+
             record['ave_loss'] = ave_loss.cpu()
             record['final_loss'] = final_loss.cpu()
             record['first_loss'] = first_loss.cpu()

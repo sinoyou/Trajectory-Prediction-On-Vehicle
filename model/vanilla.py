@@ -32,6 +32,7 @@ class VanillaLSTM(torch.nn.Module):
         self.emd_size = emd_size
         self.cell_size = cell_size
 
+        self.input_norm = torch.nn.BatchNorm1d(self.input_dim) if batch_norm else None
         self.input_emd_layer = make_mlp([self.input_dim, self.emd_size],
                                         batch_norm=batch_norm, dropout=dropout, activation='relu')
         self.output_emd_layer = make_mlp([self.cell_size, self.output_dim],
@@ -44,9 +45,16 @@ class VanillaLSTM(torch.nn.Module):
         :param hc: initial hidden state
         :return: outputs: [batch_size, length, output_dim]
         """
-        seq_length = inputs.shape[1]
+        seq_len = inputs.shape[1]
+        # normalization
+        if self.input_norm:
+            inputs = inputs.reshape(-1, 2)
+            inputs = self.input_norm(inputs)
+            inputs = inputs.view((-1, seq_len, self.input_dim))
+
+        # forward
         outputs = []
-        for step in range(seq_length):
+        for step in range(seq_len):
             step_input = inputs[:, step, :]
             emd_input = self.input_emd_layer(step_input)
             hc = self.rnn_cell(input=emd_input, hx=hc)
@@ -81,32 +89,30 @@ class VanillaLSTM(torch.nn.Module):
         return datax, datay
 
     @staticmethod
-    def train_step(vanilla, data, pred_len) -> [torch.Tensor(), torch.Tensor()]:
+    def train_step(vanilla, x, pred_len):
         """
         Run one train step
         :param vanilla: vanilla model
-        :param data: [batch_size, total_len, 2]
+        :param x: [batch_size, obs_len, 2]
         :param pred_len: length of prediction
         :return: dict()
         """
-        datax, datay = VanillaLSTM.train_data_splitter(data, pred_len)
-        model_output, _ = vanilla(datax, hx=None)
+        model_output, _ = vanilla(x, hc=None)
         gaussian_output = get_2d_gaussian(model_output=model_output)
         gaussian_output = gaussian_output[:, -pred_len:, :]
-        loss = neg_likelihood_gaussian_pdf_loss(gaussian_output, datay)
-        return {'loss': loss, 'gaussian_output': gaussian_output}
+        return {'gaussian_output': gaussian_output}
 
     @staticmethod
-    def interface(model, input_x, pred_len, sample_times):
+    def interface(model, datax, pred_len, sample_times):
         """
         During evaluation, use trained model to interface.
         :param model: Loaded Vanilla Model
-        :param input_x: obs data [1, obs_len, 2]
+        :param datax: obs data [1, obs_len, 2]
         :param pred_len: length of prediction
         :param sample_times: times of sampling trajectories
         :return: gaussian_output [sample_times, pred_len, 5], location_output[sample_times, pred_len, 2]
         """
-        device = input_x.device
+        device = datax.device
         with torch.no_grad():
             sample_gaussian = list()
             sample_location = list()
@@ -115,7 +121,7 @@ class VanillaLSTM(torch.nn.Module):
                 gaussian_output = to_device(torch.zeros((1, pred_len, 5)), device)
 
                 # initial hidden state
-                output, hc = model(input_x, hc=None)
+                output, hc = model(datax, hc=None)
                 output = torch.unsqueeze(output[:, -1, :], dim=1)
 
                 # predict iterative
