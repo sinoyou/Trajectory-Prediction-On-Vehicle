@@ -7,7 +7,8 @@ from script.cuda import to_device
 
 
 class Seq2SeqLSTM(torch.nn.Module):
-    def __init__(self, input_dim=2, output_dim=5,
+    def __init__(self, input_dim=2,
+                 output_dim=5,
                  pred_length=4,
                  emd_size=128,
                  cell_size=128,

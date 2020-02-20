@@ -49,6 +49,7 @@ class Trainer:
             elif self.args.model == 'seq2seq':
                 model = Seq2SeqLSTM(input_dim=2,
                                     output_dim=5,
+                                    pred_length=self.args.pred_len,
                                     emd_size=self.args.embedding_size,
                                     cell_size=self.args.cell_size,
                                     batch_norm=self.args.batch_norm,
