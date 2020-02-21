@@ -6,7 +6,7 @@ from script.tools import Recorder
 from model.runner import Trainer
 
 sys.path.append('../')
-os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'  # not recommended
+# os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'  # not recommended  for macOS
 
 # args parser
 parser = argparse.ArgumentParser()
@@ -19,13 +19,13 @@ def train(args, recorder):
 
 def run():
     # dataset control
-    parser.add_argument('--train_dataset', type=str)
+    parser.add_argument('--train_dataset', default='../data/kitti-train.json', type=str)
     parser.add_argument('--relative', default=False, type=bool, help='Use relative trajectory instead of relative')
     parser.add_argument('--total_len', default=11, type=int, help='Total length of trajectory when forward once.')
     parser.add_argument('--pred_len', default=1, type=int, help='Length of trajectory participated in loss calc.')
 
     # model type
-    parser.add_argument('--model', type=str)
+    parser.add_argument('--model', default='seq2seq', type=str)
 
     # model arguments
     parser.add_argument('--embedding_size', default=128, type=int)
@@ -35,7 +35,7 @@ def run():
     parser.add_argument('--bbox', default=False, type=bool)
 
     # train arguments
-    parser.add_argument('--batch_size', default=128, type=int)
+    parser.add_argument('--batch_size', default=256, type=int)  # 128
     parser.add_argument('--num_epochs', default=501, type=int)
     parser.add_argument('--learning_rate', default=1e-3, type=float)
     parser.add_argument('--clip_threshold', default=1.5, type=float)
@@ -46,7 +46,7 @@ def run():
     parser.add_argument('--print_every', default=1, type=int)
 
     # load and save
-    parser.add_argument('--save_dir', type=str)
+    parser.add_argument('--save_dir', default='../save/', type=str)
     parser.add_argument('--save_every', default=30, type=int)
     parser.add_argument('--restore_dir', default=None, type=str)
 

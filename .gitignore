@@ -5,6 +5,11 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+# added
+runs/
+save/
+README-Seq-to-Seq.md
+
 # C extensions
 *.so
 

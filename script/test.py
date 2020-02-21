@@ -4,7 +4,7 @@ import sys
 sys.path.append('../')
 import os
 
-os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'  # todo not recommended
+# os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'  # todo not recommended for macOS
 
 from script.tools import Recorder
 from model.runner import Tester

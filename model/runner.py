@@ -150,6 +150,8 @@ class Trainer:
         Plot trajectories on the tensor board.
         """
         # save current model parameters temporarily.
+        if not os.path.exists(self.args.save_dir):
+            os.makedirs(self.args.save_dir)
         checkpoint_path = os.path.join(self.args.save_dir, 'temp_checkpoint_val')
         torch.save(checkpoint, checkpoint_path)
 
