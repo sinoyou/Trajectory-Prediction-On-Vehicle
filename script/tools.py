@@ -29,7 +29,8 @@ class Recorder:
         :param step: print step
         :param cat_point: 1 <= cat_point < obs_len, then point where rel_y and rel_y_hat start.
         """
-        assert trajectories[0]['x'].ndim == 3
+        # assert trajectories[0]['x'].ndim == 3  # for pytorch1.4.0
+        assert len(trajectories[0]['x'].shape) == 3
 
         progress = tqdm(range(len(trajectories)))
 
@@ -46,9 +47,11 @@ class Recorder:
             if 'title' in trajectory.keys():
                 plt.title(trajectory['title'], fontsize=10)
 
+            abs_x = abs_x.cpu().numpy()   # Tensor to ndarray
             # plot observed and ground truth trajectory
             plt.plot(abs_x[0, :, 0], abs_x[0, :, 1], color='darkblue', label='x')
             y_cat_x = torch.cat((start, abs_y), dim=1)
+            y_cat_x = y_cat_x.cpu().numpy()  # Tensor to ndarray
             plt.plot(y_cat_x[0, :, 0], y_cat_x[0, :, 1], color='goldenrod', label='y_gt')
 
             # plot predicted trajectories(may sample many times)
@@ -56,6 +59,7 @@ class Recorder:
             for t in range(sample_times):
                 # all paths
                 abs_y_hat_cat_x = torch.cat((start.repeat(sample_times, 1, 1), abs_y_hat), dim=1)
+                abs_y_hat_cat_x = abs_y_hat_cat_x.cpu().numpy()  # Tensor to ndarray
                 if t == 0:
                     plt.plot(abs_y_hat_cat_x[t, :, 0], abs_y_hat_cat_x[t, :, 1], color='deeppink', label='y_hat')
                 else:
