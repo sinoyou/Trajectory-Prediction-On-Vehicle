@@ -83,7 +83,7 @@ class KittiDataLoader:
         """
         post_y_hat = y_hat
         # post process relative to absolute
-        if 'start' not in kwargs.keys():
+        if 'start' in kwargs.keys():
             post_y_hat = rel_to_abs(post_y_hat, kwargs['start'])
         return post_y_hat
 
