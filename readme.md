@@ -2,7 +2,7 @@
 
 环境要求：
 
-pytorch=1.14.0
+pytorch=1.4.0
 
 tqdm
 
