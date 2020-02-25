@@ -2,11 +2,16 @@ import numpy as np
 from matplotlib.patches import Ellipse
 
 
-def plot_sample_trajectories(subplot, abs_x, abs_y, start, abs_y_hat):
+def plot_sample_trajectories(subplot, abs_x, abs_y, start, abs_y_hat, line_args=None):
+    if not line_args:
+        line_args = dict()
+
     # plot observed and ground truth trajectory
-    subplot.plot(abs_x[0, :, 0], abs_x[0, :, 1], color='darkblue', label='x')
+    if line_args is None:
+        line_args = {}
+    subplot.plot(abs_x[0, :, 0], abs_x[0, :, 1], color='darkblue', label='x', **line_args)
     abs_y_cat_x = np.concatenate((start, abs_y), dim=1)
-    subplot.plot(abs_y_cat_x[0, :, 0], abs_y_cat_x[0, :, 1], color='goldenrod', label='y_gt')
+    subplot.plot(abs_y_cat_x[0, :, 0], abs_y_cat_x[0, :, 1], color='goldenrod', label='y_gt', **line_args)
 
     # plot predicted trajectories(may sample many times)
     sample_times = abs_y_hat.shape[0]
@@ -14,14 +19,38 @@ def plot_sample_trajectories(subplot, abs_x, abs_y, start, abs_y_hat):
         # all paths
         abs_y_hat_cat_x = np.concatenate((start.repeat(sample_times, axis=0), abs_y_hat), axis=1)
         if t == 0:
-            subplot.plot(abs_y_hat_cat_x[t, :, 0], abs_y_hat_cat_x[t, :, 1], color='deeppink', label='y_hat')
+            subplot.plot(abs_y_hat_cat_x[t, :, 0], abs_y_hat_cat_x[t, :, 1], color='deeppink', label='y_hat',
+                         **line_args)
         else:
-            subplot.plot(abs_y_hat_cat_x[t, :, 0], abs_y_hat_cat_x[t, :, 1], color='deeppink')
+            subplot.plot(abs_y_hat_cat_x[t, :, 0], abs_y_hat_cat_x[t, :, 1], color='deeppink', **line_args)
     return subplot
 
 
-def plot_gaussian_ellipse(subplot, abs_x, abs_y, start, gaussian_output):
+def plot_gaussian_ellipse(subplot, abs_x, abs_y, start, gaussian_output, confidence,
+                          line_args=None, ellipse_args=None):
+    if not line_args:
+        line_args = dict()
+    if not ellipse_args:
+        ellipse_args = dict()
 
+    # plot observed and ground truth trajectory
+    subplot.plot(abs_x[0, :, 0], abs_x[0, :, 1], color='darkblue', label='x', **line_args)
+    abs_y_cat_x = np.concatenate((start, abs_y), dim=1)
+    subplot.plot(abs_y_cat_x[0, :, 0], abs_y_cat_x[0, :, 1], color='goldenrod', label='y_gt', **line_args)
+
+    # plot center of gaussian
+    abs_y_hat = gaussian_output[:, :, 0:2]
+    abs_y_hat_cat_x = np.concatenate((start, abs_y_hat), axis=1)
+    subplot.plot(abs_y_hat_cat_x[0, :, 0], abs_y_hat_cat_x[0, :, 1], color='deeppink', label='y_hat', **line_args)
+
+    # plot ellipse of gaussian
+    seq_len = abs_y_hat.shape[1]
+    for step in range(0, seq_len):
+        mux, muy, sx, sy, rho = np.split(abs_y_hat[0, step, :], indices_or_sections=5)
+        ellipse_patch = get_2d_gaussian_error_ellipse(mux=mux, muy=muy, sx=sx, sy=sy, rho=rho, confidence=confidence,
+                                                      **ellipse_args)
+        subplot.add_patch(ellipse_args)
+    return subplot
 
 
 def get_2d_gaussian_error_ellipse(mux, muy, sx, sy, rho, confidence, **kwargs):
