@@ -1,6 +1,7 @@
 import logging
 import sys
 import torch
+import math
 from tensorboardX import SummaryWriter
 import matplotlib.pyplot as plt
 from tqdm import tqdm
@@ -21,7 +22,7 @@ class Recorder:
         self.logger = logging.getLogger(__name__)
         self.writer = SummaryWriter('../runs/')
 
-    def plot_trajectory(self, trajectories: list, step, cat_point):
+    def plot_trajectory(self, trajectories, step, cat_point, mode):
         """
         Plot trajectory on the board
         :param trajectories: list of dicts. dict {'tag', 'x', 'y', 'rel_x', 'rel_y', 'gaussian_output'}.
@@ -34,36 +35,40 @@ class Recorder:
 
         progress = tqdm(range(len(trajectories)))
 
+        # count modes
+        num_mode = 0
+        for i in range(1, int(math.log(mode, 2) + 1)):
+            if mode & i == 0:
+                num_mode += num_mode
+
         for i, trajectory in enumerate(trajectories):
             fig = plt.figure()
             progress.update(1)
             tag = trajectory['tag']
-            all_gaussian_output = trajectory['gaussian_output']  # todo draw heat-map
+            all_gaussian_output = trajectory['gaussian_output']
             abs_y_hat = trajectory['abs_y_hat']
             abs_x = trajectory['abs_x']
             abs_y = trajectory['abs_y']
 
             start = torch.unsqueeze(abs_x[:, cat_point, :], dim=1)
+
+            fig, subplots = plt.subplots(num_mode, 1)
+
             if 'title' in trajectory.keys():
-                plt.title(trajectory['title'], fontsize=10)
+                for subplot in subplots:
+                    subplot.title(trajectory['title'], fontsize=10)
 
-            abs_x = abs_x.cpu().numpy()   # Tensor to ndarray
-            # plot observed and ground truth trajectory
-            plt.plot(abs_x[0, :, 0], abs_x[0, :, 1], color='darkblue', label='x')
-            y_cat_x = torch.cat((start, abs_y), dim=1)
-            y_cat_x = y_cat_x.cpu().numpy()  # Tensor to ndarray
-            plt.plot(y_cat_x[0, :, 0], y_cat_x[0, :, 1], color='goldenrod', label='y_gt')
+            # Plot 1: Plot predicted sample trajectories.
+            if mode & 1 != 0:
+                pass
 
-            # plot predicted trajectories(may sample many times)
-            sample_times = abs_y_hat.shape[0]
-            for t in range(sample_times):
-                # all paths
-                abs_y_hat_cat_x = torch.cat((start.repeat(sample_times, 1, 1), abs_y_hat), dim=1)
-                abs_y_hat_cat_x = abs_y_hat_cat_x.cpu().numpy()  # Tensor to ndarray
-                if t == 0:
-                    plt.plot(abs_y_hat_cat_x[t, :, 0], abs_y_hat_cat_x[t, :, 1], color='deeppink', label='y_hat')
-                else:
-                    plt.plot(abs_y_hat_cat_x[t, :, 0], abs_y_hat_cat_x[t, :, 1], color='deeppink')
+            # Plot 2: Plot predicted gaussian Ellipse.
+            if mode & 2 != 0:
+                pass
+
+            # todo Plot 3: Plot predicted potenfial zone according to gaussian Ellipse.
+            if mode & 4 != 0:
+                raise Exception('Visualization Mode 3 not implemented.')
 
             plt.legend(loc=2)
             self.writer.add_figure(tag=str(tag), figure=fig, global_step=step)
