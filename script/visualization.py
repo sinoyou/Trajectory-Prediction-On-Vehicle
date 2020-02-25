@@ -53,6 +53,10 @@ def plot_gaussian_ellipse(subplot, abs_x, abs_y, start, gaussian_output, confide
     return subplot
 
 
+def plot_potential_zone(subplot, abs_x, abs_y, start, gaussian_output, confidence, line_args=None, ellipse_args=None):
+    pass
+
+
 def get_2d_gaussian_error_ellipse(mux, muy, sx, sy, rho, confidence, **kwargs):
     """
     Return a patch of 2D gaussian distribution Ellipse.

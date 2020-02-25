@@ -283,23 +283,23 @@ class Tester:
             record['step'] = step
             record['title'] = msg2
 
-            record['x'] = x.cpu()
-            record['abs_x'] = abs_x.cpu()
-            record['y'] = y.cpu()
-            record['abs_y'] = abs_y.cpu()
-            record['y_hat'] = y_hat.cpu()
-            record['abs_y_hat'] = abs_y_hat.cpu()
-            record['gaussian_output'] = pred_gaussian.cpu()
+            record['x'] = x.cpu().numpy()
+            record['abs_x'] = abs_x.cpu().numpy()
+            record['y'] = y.cpu().numpy()
+            record['abs_y'] = abs_y.cpu().numpy()
+            record['y_hat'] = y_hat.cpu().numpy()
+            record['abs_y_hat'] = abs_y_hat.cpu().numpy()
+            record['gaussian_output'] = pred_gaussian.cpu().numpy()
 
-            record['ave_loss'] = ave_loss.cpu()
-            record['final_loss'] = final_loss.cpu()
-            record['first_loss'] = first_loss.cpu()
-            record['ave_l2'] = ave_l2.cpu()
-            record['final_l2'] = final_l2.cpu()
-            record['ade'] = ade.cpu()
-            record['fde'] = fde.cpu()
-            record['min_ade'] = min_ade.cpu()
-            record['min_fde'] = min_fde.cpu()
+            record['ave_loss'] = ave_loss.cpu().numpy()
+            record['final_loss'] = final_loss.cpu().numpy()
+            record['first_loss'] = first_loss.cpu().numpy()
+            record['ave_l2'] = ave_l2.cpu().numpy()
+            record['final_l2'] = final_l2.cpu().numpy()
+            record['ade'] = ade.cpu().numpy()
+            record['fde'] = fde.cpu().numpy()
+            record['min_ade'] = min_ade.cpu().numpy()
+            record['min_fde'] = min_fde.cpu().numpy()
 
             save_list.append(record)
 
@@ -320,7 +320,7 @@ class Tester:
         # plot
         if self.args.plot:
             self.recorder.logger.info('Plot trajectory')
-            self.recorder.plot_trajectory(save_list, step=step, cat_point=self.args.obs_len - 1)
+            self.recorder.plot_trajectory(save_list, step=step, cat_point=self.args.obs_len - 1, mode=1)
 
         # export
         if self.args.export_path:
