@@ -1,13 +1,12 @@
 import argparse
 import sys
-
-sys.path.append('../')
 import os
-
-os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'  # todo not recommended
 
 from script.tools import Recorder
 from model.runner import Tester
+
+sys.path.append('../')
+os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'  # todo not recommended
 
 # args parser
 parser = argparse.ArgumentParser()
@@ -19,6 +18,7 @@ def test():
     parser.add_argument('--load_path', type=str)
     parser.add_argument('--obs_len', default=10, type=int)
     parser.add_argument('--pred_len', default=5, type=int)
+    parser.add_argument('--use_sample', default=False, type=bool)
     parser.add_argument('--sample_times', default=20, type=int)
 
     # dataset

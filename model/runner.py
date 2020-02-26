@@ -160,6 +160,7 @@ class Trainer:
             'obs_len': self.args.val_obs_len,
             'pred_len': self.args.val_pred_len,
             'sample_times': self.args.val_sample_times,
+            'use_sample': self.args.val_use_sample,
             'test_dataset': self.args.val_dataset,
             'silence': True,
             'plot': self.args.val_plot,
@@ -182,6 +183,13 @@ class Tester:
                                             self.args.relative)
         self.sampler = gaussian_sampler
         self.model = to_device(self.restore_model().train(False), self.device)
+
+        self.args_check()
+
+    def args_check(self):
+        if not self.args.use_sample and self.args.sample_times > 1:
+            self.recorder.logger.info('Found not using sample, but sample times > 1. Auto turned to 1.')
+            self.args.sample_times = 1
 
     def restore_model(self) -> torch.nn.Module:
         """
@@ -238,7 +246,8 @@ class Tester:
                 pred_gaussian, y_hat = self.model.interface(model=self.model,
                                                             datax=x,
                                                             pred_len=self.args.pred_len,
-                                                            sample_times=self.args.sample_times)
+                                                            sample_times=self.args.sample_times,
+                                                            use_sample=self.args.use_sample)
                 # data post process
                 abs_x, abs_y = self.model.evaluation_data_splitter(data, self.args.pred_len)
                 abs_y_hat = self.test_dataset.post_process(y_hat, start=torch.unsqueeze(abs_x[:, -1, :], dim=1))
@@ -248,7 +257,8 @@ class Tester:
                 pred_gaussian, y_hat = self.model.interface(model=self.model,
                                                             datax=x,
                                                             pred_len=self.args.pred_len,
-                                                            sample_times=self.args.sample_times)
+                                                            sample_times=self.args.sample_times,
+                                                            use_sample=self.args.use_sample)
                 abs_x = x
                 abs_y = y
                 abs_y_hat = y_hat
@@ -320,7 +330,7 @@ class Tester:
         # plot
         if self.args.plot:
             self.recorder.logger.info('Plot trajectory')
-            self.recorder.plot_trajectory(save_list, step=step, cat_point=self.args.obs_len - 1, mode=1)
+            self.recorder.plot_trajectory(save_list, step=step, cat_point=self.args.obs_len - 1, mode=2)
 
         # export
         if self.args.export_path:
