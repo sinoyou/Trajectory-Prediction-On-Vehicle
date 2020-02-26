@@ -10,7 +10,7 @@ def plot_sample_trajectories(subplot, abs_x, abs_y, start, abs_y_hat, line_args=
     if line_args is None:
         line_args = {}
     subplot.plot(abs_x[0, :, 0], abs_x[0, :, 1], color='darkblue', label='x', **line_args)
-    abs_y_cat_x = np.concatenate((start, abs_y), dim=1)
+    abs_y_cat_x = np.concatenate((start, abs_y), axis=1)
     subplot.plot(abs_y_cat_x[0, :, 0], abs_y_cat_x[0, :, 1], color='goldenrod', label='y_gt', **line_args)
 
     # plot predicted trajectories(may sample many times)
@@ -33,23 +33,27 @@ def plot_gaussian_ellipse(subplot, abs_x, abs_y, start, gaussian_output, confide
     if not ellipse_args:
         ellipse_args = dict()
 
+    if gaussian_output.shape[0] > 1:
+        print('Found multiple predicted gaussian output, only print the first.')
+
     # plot observed and ground truth trajectory
     subplot.plot(abs_x[0, :, 0], abs_x[0, :, 1], color='darkblue', label='x', **line_args)
-    abs_y_cat_x = np.concatenate((start, abs_y), dim=1)
+    abs_y_cat_x = np.concatenate((start, abs_y), axis=1)
     subplot.plot(abs_y_cat_x[0, :, 0], abs_y_cat_x[0, :, 1], color='goldenrod', label='y_gt', **line_args)
 
     # plot center of gaussian
     abs_y_hat = gaussian_output[:, :, 0:2]
     abs_y_hat_cat_x = np.concatenate((start, abs_y_hat), axis=1)
     subplot.plot(abs_y_hat_cat_x[0, :, 0], abs_y_hat_cat_x[0, :, 1], color='deeppink', label='y_hat', **line_args)
+    subplot.scatter(abs_y_hat_cat_x[0, :, 0], abs_y_hat_cat_x[0, :, 1], color='blue', marker='o')
 
     # plot ellipse of gaussian
     seq_len = abs_y_hat.shape[1]
     for step in range(0, seq_len):
-        mux, muy, sx, sy, rho = np.split(abs_y_hat[0, step, :], indices_or_sections=5)
-        ellipse_patch = get_2d_gaussian_error_ellipse(mux=mux, muy=muy, sx=sx, sy=sy, rho=rho, confidence=confidence,
-                                                      **ellipse_args)
-        subplot.add_patch(ellipse_args)
+        mux, muy, sx, sy, rho = np.split(gaussian_output[0, step, :], indices_or_sections=5)
+        ellipse_patch = get_2d_gaussian_error_ellipse(mux=mux[0], muy=muy[0], sx=sx[0], sy=sy[0], rho=rho[0],
+                                                      confidence=confidence, **ellipse_args)
+        subplot.add_patch(ellipse_patch)
     return subplot
 
 

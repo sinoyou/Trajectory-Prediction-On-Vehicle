@@ -5,8 +5,14 @@ import math
 from tensorboardX import SummaryWriter
 import matplotlib.pyplot as plt
 from tqdm import tqdm
+import numpy as np
 
 from script.cuda import to_device
+from script.visualization import plot_sample_trajectories, plot_gaussian_ellipse, plot_potential_zone
+
+confidence = 5.991
+ellipse_args = {'ec': 'blue', 'fill': False, 'lw': 1, 'alpha': 0.5}
+plot_args = {'lw': 3, 'alpha': 0.5}
 
 
 class Recorder:
@@ -29,6 +35,7 @@ class Recorder:
                              [sample_times, length, 2/5]
         :param step: print step
         :param cat_point: 1 <= cat_point < obs_len, then point where rel_y and rel_y_hat start.
+        :param mode: plot mode. 1 - sample trajectories, 2 - gaussian ellipse, 3 - potential field
         """
         # assert trajectories[0]['x'].ndim == 3  # for pytorch1.4.0
         assert len(trajectories[0]['x'].shape) == 3
@@ -37,40 +44,48 @@ class Recorder:
 
         # count modes
         num_mode = 0
-        for i in range(1, int(math.log(mode, 2) + 1)):
-            if mode & i == 0:
-                num_mode += num_mode
+        for i in range(0, int(math.log(mode, 2) + 1)):
+            if mode & int((2 ** i)) > 0:
+                num_mode += 1
 
         for i, trajectory in enumerate(trajectories):
-            fig = plt.figure()
             progress.update(1)
             tag = trajectory['tag']
-            all_gaussian_output = trajectory['gaussian_output']
+            gaussian_output = trajectory['gaussian_output']
             abs_y_hat = trajectory['abs_y_hat']
             abs_x = trajectory['abs_x']
             abs_y = trajectory['abs_y']
 
-            start = torch.unsqueeze(abs_x[:, cat_point, :], dim=1)
+            start = np.expand_dims(abs_x[:, cat_point, :], axis=1)
 
-            fig, subplots = plt.subplots(num_mode, 1)
+            fig, subplots = plt.subplots(1, num_mode)
+            if num_mode == 1:
+                subplots = [subplots]
 
             if 'title' in trajectory.keys():
-                for subplot in subplots:
-                    subplot.title(trajectory['title'], fontsize=10)
+                fig.suptitle(trajectory['title'], fontsize=10)
 
+            subplot_cnt = 0
             # Plot 1: Plot predicted sample trajectories.
             if mode & 1 != 0:
-                pass
+                plot_sample_trajectories(subplot=subplots[subplot_cnt], abs_x=abs_x, abs_y=abs_y,
+                                         start=start, abs_y_hat=abs_y_hat, line_args=plot_args)
+                subplot_cnt += 1
 
             # Plot 2: Plot predicted gaussian Ellipse.
             if mode & 2 != 0:
-                pass
+                plot_gaussian_ellipse(subplot=subplots[subplot_cnt], abs_x=abs_x, abs_y=abs_y, start=start,
+                                      gaussian_output=gaussian_output, confidence=confidence,
+                                      ellipse_args=ellipse_args, line_args=plot_args)
+                subplot_cnt += 1
 
             # todo Plot 3: Plot predicted potenfial zone according to gaussian Ellipse.
             if mode & 4 != 0:
                 raise Exception('Visualization Mode 3 not implemented.')
 
             plt.legend(loc=2)
+            plt.axis('scaled')
+            plt.axis('equal')
             self.writer.add_figure(tag=str(tag), figure=fig, global_step=step)
 
         progress.close()
