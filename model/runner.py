@@ -330,7 +330,7 @@ class Tester:
         # plot
         if self.args.plot:
             self.recorder.logger.info('Plot trajectory')
-            self.recorder.plot_trajectory(save_list, step=step, cat_point=self.args.obs_len - 1, mode=2)
+            self.recorder.plot_trajectory(save_list, step=step, cat_point=self.args.obs_len - 1, mode=6)
 
         # export
         if self.args.export_path:
