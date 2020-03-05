@@ -25,7 +25,6 @@ class Trainer:
         self.recorder = recorder
         self.pre_epoch = 0
         self.model, self.optimizer = self.build()
-        self.model = to_device(self.model, self.device)
         self.data_loader = KittiDataLoader(self.args.train_dataset,
                                            self.args.batch_size,
                                            self.args.total_len,
@@ -58,6 +57,9 @@ class Trainer:
                 raise Exception('Model {} not implemented.'.format(self.args.model))
         else:
             raise Exception('More Input Not Implemented in Runner.')
+
+        # ! cuda operation must be front of optimizer define.
+        model = to_device(model, self.device)
 
         # optimizer
         optimizer = torch.optim.Adam(model.parameters(),
@@ -109,7 +111,7 @@ class Trainer:
                 self.optimizer.zero_grad()
                 ave_loss.backward()
                 if self.args.clip_threshold > 0:
-                    torch.nn.utils.clip_grad_norm(self.model.parameters(), self.args.clip_threshold)
+                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.args.clip_threshold)
                 self.optimizer.step()
                 loss_list.append(ave_loss)
 

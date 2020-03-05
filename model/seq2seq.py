@@ -153,7 +153,7 @@ class Seq2SeqLSTM(torch.nn.Module):
 
         with torch.no_grad():
             for _ in range(sample_times):
-                interface_output_parser = sample_times if use_sample else None
+                interface_output_parser = sample_output_parser if use_sample else None
                 model_outputs = model(datax, interface_output_parser)
 
                 gaussian_output = to_device(torch.zeros((1, pred_len, 5)), datax.device)
