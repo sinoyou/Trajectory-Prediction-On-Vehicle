@@ -32,7 +32,8 @@ class Seq2SeqLSTM(torch.nn.Module):
         self.emd_size = emd_size
         self.cell_size = cell_size
 
-        self.input_norm = torch.nn.BatchNorm1d(self.input_dim) if batch_norm else None
+        self.encoder_norm = torch.nn.BatchNorm1d(self.input_dim) if batch_norm else None
+        self.decoder_norm = torch.nn.BatchNorm1d(self.input_dim) if batch_norm else None
         self.input_emd_layer = make_mlp([self.input_dim, self.emd_size],
                                         activation='rule', batch_norm=batch_norm, dropout=dropout)
         self.output_emd_layer = make_mlp([self.cell_size, self.output_dim],
@@ -54,9 +55,9 @@ class Seq2SeqLSTM(torch.nn.Module):
         prev_pos = inputs[:, -1, :]
 
         # normalization
-        if self.input_norm:
+        if self.encoder_norm:
             inputs = inputs.reshape(-1, 2)
-            inputs = self.input_norm(inputs)
+            inputs = self.encoder_norm(inputs)
             inputs = inputs.view((-1, seq_len, self.input_dim))
 
         # encoding
@@ -81,6 +82,8 @@ class Seq2SeqLSTM(torch.nn.Module):
         hx = torch.squeeze(hc[0], dim=0)
         hx = (hx, torch.zeros_like(hx, device=hx.device))  # (h, c=0)
         for step in range(self.pred_length):
+            if self.decoder_norm:
+                prev_pos = self.decoder_norm(prev_pos)
             emd_input = self.input_emd_layer(prev_pos)
             hx = self.decoder_cell(input=emd_input, hx=hx)
             emd_output = self.output_emd_layer(hx[0])

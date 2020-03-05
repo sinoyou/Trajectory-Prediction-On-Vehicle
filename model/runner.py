@@ -205,6 +205,7 @@ class Tester:
             self.model = Seq2SeqLSTM
             model = Seq2SeqLSTM(input_dim=2,
                                 output_dim=5,
+                                pred_length=train_args.pred_len,
                                 emd_size=train_args.embedding_size,
                                 cell_size=train_args.cell_size,
                                 batch_norm=train_args.batch_norm,
