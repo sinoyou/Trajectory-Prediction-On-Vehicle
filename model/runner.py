@@ -129,7 +129,7 @@ class Trainer:
             if epoch >= 0 and epoch % self.args.print_every == 0:
                 self.recorder.logger.info('Epoch {} / {}, Train_Loss {}, Time {}'.format(
                     epoch,
-                    self.args.num_epochs,
+                    self.args.num_epochs + self.pre_epoch,
                     ave_loss,
                     end_time - start_time
                 ))
