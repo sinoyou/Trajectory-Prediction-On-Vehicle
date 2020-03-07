@@ -3,18 +3,14 @@ from matplotlib.patches import Ellipse
 import matplotlib.patches as patches
 from matplotlib.path import Path
 import matplotlib.pyplot as plt
+import matplotlib.cm as cm
+
+from scipy.ndimage.filters import gaussian_filter
 
 
 def plot_sample_trajectories(subplot, abs_x, abs_y, start, abs_y_hat, line_args=None):
     if not line_args:
         line_args = dict()
-
-    # plot observed and ground truth trajectory
-    if line_args is None:
-        line_args = {}
-    subplot.plot(abs_x[0, :, 0], abs_x[0, :, 1], color='darkblue', label='x', **line_args)
-    abs_y_cat_x = np.concatenate((start, abs_y), axis=1)
-    subplot.plot(abs_y_cat_x[0, :, 0], abs_y_cat_x[0, :, 1], color='goldenrod', label='y_gt', **line_args)
 
     # plot predicted trajectories(may sample many times)
     sample_times = abs_y_hat.shape[0]
@@ -26,6 +22,18 @@ def plot_sample_trajectories(subplot, abs_x, abs_y, start, abs_y_hat, line_args=
                          **line_args)
         else:
             subplot.plot(abs_y_hat_cat_x[t, :, 0], abs_y_hat_cat_x[t, :, 1], color='deeppink', **line_args)
+
+    # plot observed and ground truth trajectory
+    if line_args is None:
+        line_args = {}
+    subplot.plot(abs_x[0, :, 0], abs_x[0, :, 1], color='darkblue', label='x', **line_args)
+    abs_y_cat_x = np.concatenate((start, abs_y), axis=1)
+    subplot.plot(abs_y_cat_x[0, :, 0], abs_y_cat_x[0, :, 1], color='goldenrod', label='y_gt', **line_args)
+
+    # extents
+    extents = get_extents(abs_x, abs_y, abs_y_hat)
+    subplot.axis(extents)
+
     return subplot
 
 
@@ -38,11 +46,6 @@ def plot_gaussian_ellipse(subplot, abs_x, abs_y, start, gaussian_output, confide
 
     if gaussian_output.shape[0] > 1:
         print('Found multiple predicted gaussian output, only print the first.')
-
-    # plot observed and ground truth trajectory
-    subplot.plot(abs_x[0, :, 0], abs_x[0, :, 1], color='darkblue', label='x', **line_args)
-    abs_y_cat_x = np.concatenate((start, abs_y), axis=1)
-    subplot.plot(abs_y_cat_x[0, :, 0], abs_y_cat_x[0, :, 1], color='goldenrod', label='y_gt', **line_args)
 
     # plot center of gaussian
     abs_y_hat = gaussian_output[:, :, 0:2]
@@ -57,18 +60,28 @@ def plot_gaussian_ellipse(subplot, abs_x, abs_y, start, gaussian_output, confide
         ellipse_patch = get_2d_gaussian_error_ellipse(mux=mux[0], muy=muy[0], sx=sx[0], sy=sy[0], rho=rho[0],
                                                       confidence=confidence, **ellipse_args)
         subplot.add_patch(ellipse_patch)
-    subplot.axis('scaled')
-    subplot.axis('equal')
+
+    # plot observed and ground truth trajectory
+    subplot.plot(abs_x[0, :, 0], abs_x[0, :, 1], color='darkblue', label='x', **line_args)
+    abs_y_cat_x = np.concatenate((start, abs_y), axis=1)
+    subplot.plot(abs_y_cat_x[0, :, 0], abs_y_cat_x[0, :, 1], color='goldenrod', label='y_gt', **line_args)
+
+    # extents
+    extents = get_extents(abs_x, abs_y, gaussian_output[:, :, 0:2])
+    subplot.axis(extents)
+
     return subplot
 
 
 def plot_potential_zone(subplot, abs_x, abs_y, start, gaussian_output, confidence_zone, line_args=None,
-                        patch_args=None):
+                        patch_args=None, ellipse_args=None):
     # todo : absolute angle can not fit all situation, must find other way to check the bound.
     if not line_args:
         line_args = dict()
     if not patch_args:
         patch_args = dict()
+    if not ellipse_args:
+        ellipse_args = dict()
     if gaussian_output.shape[0] > 1:
         print('Found multiple predicted gaussian output, only print the first.')
 
@@ -82,8 +95,72 @@ def plot_potential_zone(subplot, abs_x, abs_y, start, gaussian_output, confidenc
                                           **patch_args)
     for f in potential_fields:
         subplot.add_patch(f)
-    subplot.axis('scaled')
-    subplot.axis('equal')
+
+    # plot final ellipse
+    mux, muy, sx, sy, rho = np.split(gaussian_output[0, -1, :], indices_or_sections=5)
+    ellipse_patch = get_2d_gaussian_error_ellipse(mux=mux[0], muy=muy[0], sx=sx[0], sy=sy[0], rho=rho[0],
+                                                  confidence=confidence_zone[1], **ellipse_args)
+    subplot.add_patch(ellipse_patch)
+
+    # extents
+    extents = get_extents(abs_x, abs_y, gaussian_output[:, :, 0:2])
+    subplot.axis(extents)
+    return subplot
+
+
+def plot_potential_heat_map(subplot, abs_x, abs_y, start, abs_y_hat, gaussian_output,
+                            src='sample',
+                            sample_times=50,
+                            sigma=64,
+                            bins=1000,
+                            line_args=None):
+    if not line_args:
+        line_args = dict()
+
+    # plot observed and ground truth trajectory
+    subplot.plot(abs_x[0, :, 0], abs_x[0, :, 1], color='darkblue', label='x', **line_args)
+    abs_y_cat_x = np.concatenate((start, abs_y), axis=1)
+    subplot.plot(abs_y_cat_x[0, :, 0], abs_y_cat_x[0, :, 1], color='goldenrod', label='y_gt', **line_args)
+
+    # get extents = heat map scale
+    extents = get_extents(abs_x, abs_y, abs_y_hat)
+    x_bin = np.arange(extents[0], extents[1], (extents[1] - extents[0]) / bins)
+    y_bin = np.arange(extents[2], extents[3], (extents[3] - extents[2]) / bins)
+
+    # Two types of source
+    if src == 'sample':
+        # [sample_times, pred_len, 2]
+        xs = list()
+        ys = list()
+        lines_count = abs_y_hat.shape[0]
+        for i in range(lines_count):
+            x_begin, x_end = abs_y_hat[i, 0, 0], abs_y_hat[i, -1, 0]
+            z = np.polyfit(abs_y_hat[i, :, 0], abs_y_hat[i, :, 1], 3)
+            z = np.poly1d(z)
+            xs += np.arange(x_begin, x_end, (x_end - x_begin) / 100).tolist()
+            ys += np.polyval(z, np.arange(x_begin, x_end, (x_end - x_begin) / 100)).tolist()
+
+        img, _ = plot_heat_map(xs, ys, sigma, bins=(x_bin, y_bin))
+        subplot.imshow(img, extent=extents, origin='lower', cmap=plt.get_cmap('Greens'))
+    elif src == 'gaussian_ellipse':
+        pred_len = abs_y_hat.shape[1]
+        xs = list()
+        ys = list()
+        for step in range(pred_len):
+            g_slice = gaussian_output[0, step, :]
+            mux, muy, sx, sy, rho = g_slice[0], g_slice[1], g_slice[2], g_slice[3], g_slice[4]
+            mean = (mux, muy)
+            cov = ((sx * sx, sx * sy * rho), (sx * sy * rho, sy * sy))
+            samples = np.random.multivariate_normal(mean, cov, sample_times)
+            xs += [samples[i, 0] for i in range(sample_times)]
+            ys += [samples[i, 1] for i in range(sample_times)]
+        img, _ = plot_heat_map(xs, ys, sigma=sigma, bins=(x_bin, y_bin))
+        subplot.imshow(img, extent=extents, origin='lower', cmap=plt.get_cmap('Greens'))
+    else:
+        raise Exception('Heat map plot not supports {}'.format(src))
+
+    subplot.axis(extents)
+    subplot.axis('auto')
     return subplot
 
 
@@ -176,7 +253,8 @@ def get_vert_of_error_ellipse_by_angle(gaussian_parameters, confidence, angle):
     # define vert with angle in norm 2D gaussian distribution.
     angle = angle * np.pi / 180
     norm_vert = np.zeros((2, 1))
-    norm_vert[0, 0], norm_vert[1, 0] = np.sqrt(confidence) * np.ma.cos(angle), np.sqrt(confidence) * np.ma.sin(angle)
+    norm_vert[0, 0], norm_vert[1, 0] = np.sqrt(confidence) * np.ma.cos(angle), np.sqrt(confidence) * np.ma.sin(
+        angle)
     mux, muy, sx, sy, rho = gaussian_parameters
 
     # get eig value and vector
@@ -193,6 +271,25 @@ def get_vert_of_error_ellipse_by_angle(gaussian_parameters, confidence, angle):
     transformed_vert[1] += muy
 
     return transformed_vert[0], transformed_vert[1]
+
+
+def plot_heat_map(x, y, sigma, bins):
+    heatmap, xedges, yedges = np.histogram2d(x, y, bins=bins)
+    heatmap = gaussian_filter(heatmap, sigma=sigma)
+
+    extent = [xedges[0], xedges[-1], yedges[0], yedges[-1]]
+    return heatmap.T, extent
+
+
+def get_extents(x, y, y_hat):
+    x_min = min(np.min(y_hat[:, :, 0]), np.min(y[:, :, 0]), np.min(x[:, :, 0]))
+    x_max = max(np.max(y_hat[:, :, 0]), np.max(y[:, :, 0]), np.max(x[:, :, 0]))
+    y_min = min(np.min(y_hat[:, :, 1]), np.min(y[:, :, 1]), np.min(x[:, :, 1]))
+    y_max = max(np.max(y_hat[:, :, 1]), np.max(y[:, :, 1]), np.max(x[:, :, 1]))
+    x_dif = (x_max - x_min) * 0.5
+    y_dif = (y_max - y_min) * 0.5
+    extents = [x_min - x_dif, x_max + x_dif, y_min - y_dif, y_max + y_dif]
+    return extents
 
 
 if __name__ == '__main__':
