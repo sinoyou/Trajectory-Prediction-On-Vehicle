@@ -199,7 +199,7 @@ class Tester:
         if not os.path.exists(self.args.load_path):
             raise Exception('File {} not exists.'.format(self.args.load_path))
 
-        checkpoint = torch.load(self.args.load_path)
+        checkpoint = torch.load(self.args.load_path, map_location=self.device)
         train_args = checkpoint['args']
         if self.args.model == 'vanilla':
             self.model = VanillaLSTM
@@ -331,7 +331,8 @@ class Tester:
         # plot
         if self.args.plot:
             self.recorder.logger.info('Plot trajectory')
-            self.recorder.plot_trajectory(save_list, step=step, cat_point=self.args.obs_len - 1, mode=6)
+            self.recorder.plot_trajectory(save_list, step=step, cat_point=self.args.obs_len - 1,
+                                          mode=self.args.plot_mode)
 
         # export
         if self.args.export_path:
