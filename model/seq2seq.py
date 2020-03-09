@@ -32,7 +32,8 @@ class Seq2SeqLSTM(torch.nn.Module):
         self.emd_size = emd_size
         self.cell_size = cell_size
 
-        self.input_norm = torch.nn.BatchNorm1d(self.input_dim) if batch_norm else None
+        self.encoder_norm = torch.nn.BatchNorm1d(self.input_dim) if batch_norm else None
+        self.decoder_norm = torch.nn.BatchNorm1d(self.input_dim) if batch_norm else None
         self.input_emd_layer = make_mlp([self.input_dim, self.emd_size],
                                         activation='rule', batch_norm=batch_norm, dropout=dropout)
         self.output_emd_layer = make_mlp([self.cell_size, self.output_dim],
@@ -54,9 +55,9 @@ class Seq2SeqLSTM(torch.nn.Module):
         prev_pos = inputs[:, -1, :]
 
         # normalization
-        if self.input_norm:
+        if self.encoder_norm:
             inputs = inputs.reshape(-1, 2)
-            inputs = self.input_norm(inputs)
+            inputs = self.encoder_norm(inputs)
             inputs = inputs.view((-1, seq_len, self.input_dim))
 
         # encoding
@@ -81,6 +82,8 @@ class Seq2SeqLSTM(torch.nn.Module):
         hx = torch.squeeze(hc[0], dim=0)
         hx = (hx, torch.zeros_like(hx, device=hx.device))  # (h, c=0)
         for step in range(self.pred_length):
+            if self.decoder_norm:
+                prev_pos = self.decoder_norm(prev_pos)
             emd_input = self.input_emd_layer(prev_pos)
             hx = self.decoder_cell(input=emd_input, hx=hx)
             emd_output = self.output_emd_layer(hx[0])
@@ -126,19 +129,20 @@ class Seq2SeqLSTM(torch.nn.Module):
         return {'gaussian_output': gaussian_output}
 
     @staticmethod
-    def interface(model, datax, pred_len, sample_times):
+    def interface(model, datax, pred_len, sample_times, use_sample):
         """
         During evaluation, use trained model to interface.
         :param model: Loaded Vanilla Model
         :param datax: obs data [1, obs_len, 2]
         :param pred_len: length of prediction
         :param sample_times: times of sampling trajectories
+        :param use_sample: if True, applying sample in interface. if False, use average value in gaussian.
         :return: gaussian_output [sample_times, pred_len, 5], location_output[sample_times, pred_len, 2]
         """
         sample_gaussian = list()
         sample_location = list()
 
-        def interface_output_parser(x):
+        def sample_output_parser(x):
             """
             Only used in interface!
             :param x: (1, 5)
@@ -149,7 +153,8 @@ class Seq2SeqLSTM(torch.nn.Module):
 
         with torch.no_grad():
             for _ in range(sample_times):
-                model_outputs= model(datax, interface_output_parser)
+                interface_output_parser = sample_output_parser if use_sample else None
+                model_outputs = model(datax, interface_output_parser)
 
                 gaussian_output = to_device(torch.zeros((1, pred_len, 5)), datax.device)
                 rel_y_hat = to_device(torch.zeros((1, pred_len, 2)), datax.device)
@@ -157,12 +162,15 @@ class Seq2SeqLSTM(torch.nn.Module):
                 for itr in range(pred_len):
                     model_output = model_outputs[:, itr, :]
                     gaussian_output[:, itr, :] = get_2d_gaussian(model_output=model_output)
-                    rel_y_hat[0, itr, 0], rel_y_hat[0, itr, 1] = gaussian_sampler(
-                        gaussian_output[0, itr, 0].cpu().numpy(),
-                        gaussian_output[0, itr, 1].cpu().numpy(),
-                        gaussian_output[0, itr, 2].cpu().numpy(),
-                        gaussian_output[0, itr, 3].cpu().numpy(),
-                        gaussian_output[0, itr, 4].cpu().numpy())
+                    if use_sample:
+                        rel_y_hat[0, itr, 0], rel_y_hat[0, itr, 1] = gaussian_sampler(
+                            gaussian_output[0, itr, 0].cpu().numpy(),
+                            gaussian_output[0, itr, 1].cpu().numpy(),
+                            gaussian_output[0, itr, 2].cpu().numpy(),
+                            gaussian_output[0, itr, 3].cpu().numpy(),
+                            gaussian_output[0, itr, 4].cpu().numpy())
+                    else:
+                        rel_y_hat[0, itr, :] = gaussian_output[:, itr, 0:2]
 
                 sample_gaussian.append(gaussian_output)
                 sample_location.append(rel_y_hat)

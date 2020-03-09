@@ -103,13 +103,14 @@ class VanillaLSTM(torch.nn.Module):
         return {'gaussian_output': gaussian_output}
 
     @staticmethod
-    def interface(model, datax, pred_len, sample_times):
+    def interface(model, datax, pred_len, sample_times, use_sample):
         """
         During evaluation, use trained model to interface.
         :param model: Loaded Vanilla Model
         :param datax: obs data [1, obs_len, 2]
         :param pred_len: length of prediction
         :param sample_times: times of sampling trajectories
+        :param use_sample: if True, applying sample in interface. if False, use average value in gaussian.
         :return: gaussian_output [sample_times, pred_len, 5], location_output[sample_times, pred_len, 2]
         """
         device = datax.device
@@ -126,14 +127,17 @@ class VanillaLSTM(torch.nn.Module):
 
                 # predict iterative
                 for itr in range(pred_len):
-                    # sampler
                     gaussian_output[0, itr, :] = get_2d_gaussian(output)
-                    rel_y_hat[0, itr, 0], rel_y_hat[0, itr, 1] = gaussian_sampler(
-                        gaussian_output[0, itr, 0].cpu().numpy(),
-                        gaussian_output[0, itr, 1].cpu().numpy(),
-                        gaussian_output[0, itr, 2].cpu().numpy(),
-                        gaussian_output[0, itr, 3].cpu().numpy(),
-                        gaussian_output[0, itr, 4].cpu().numpy())
+                    if use_sample:
+                        rel_y_hat[0, itr, 0], rel_y_hat[0, itr, 1] = gaussian_sampler(
+                            gaussian_output[0, itr, 0].cpu().numpy(),
+                            gaussian_output[0, itr, 1].cpu().numpy(),
+                            gaussian_output[0, itr, 2].cpu().numpy(),
+                            gaussian_output[0, itr, 3].cpu().numpy(),
+                            gaussian_output[0, itr, 4].cpu().numpy())
+                    else:
+                        rel_y_hat[0, itr, :] = gaussian_output[0, itr, 0:2]
+
                     if itr == pred_len - 1:
                         break
 

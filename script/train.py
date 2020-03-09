@@ -54,6 +54,7 @@ def run():
     parser.add_argument('--val_dataset', type=str)
     parser.add_argument('--val_obs_len', type=int)
     parser.add_argument('--val_pred_len', type=int)
+    parser.add_argument('--val_use_sample', default=False, type=bool)
     parser.add_argument('--val_sample_times', type=int)
     parser.add_argument('--val_plot', default=False, type=bool)
 

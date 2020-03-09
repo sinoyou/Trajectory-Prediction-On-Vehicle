@@ -25,7 +25,6 @@ class Trainer:
         self.recorder = recorder
         self.pre_epoch = 0
         self.model, self.optimizer = self.build()
-        self.model = to_device(self.model, self.device)
         self.data_loader = KittiDataLoader(self.args.train_dataset,
                                            self.args.batch_size,
                                            self.args.total_len,
@@ -58,6 +57,9 @@ class Trainer:
                 raise Exception('Model {} not implemented.'.format(self.args.model))
         else:
             raise Exception('More Input Not Implemented in Runner.')
+
+        # ! cuda operation must be front of optimizer define.
+        model = to_device(model, self.device)
 
         # optimizer
         optimizer = torch.optim.Adam(model.parameters(),
@@ -109,7 +111,7 @@ class Trainer:
                 self.optimizer.zero_grad()
                 ave_loss.backward()
                 if self.args.clip_threshold > 0:
-                    torch.nn.utils.clip_grad_norm(self.model.parameters(), self.args.clip_threshold)
+                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.args.clip_threshold)
                 self.optimizer.step()
                 loss_list.append(ave_loss)
 
@@ -162,6 +164,7 @@ class Trainer:
             'obs_len': self.args.val_obs_len,
             'pred_len': self.args.val_pred_len,
             'sample_times': self.args.val_sample_times,
+            'use_sample': self.args.val_use_sample,
             'test_dataset': self.args.val_dataset,
             'silence': True,
             'plot': self.args.val_plot,
@@ -185,6 +188,13 @@ class Tester:
         self.sampler = gaussian_sampler
         self.model = to_device(self.restore_model().train(False), self.device)
 
+        self.args_check()
+
+    def args_check(self):
+        if not self.args.use_sample and self.args.sample_times > 1:
+            self.recorder.logger.info('Found not using sample, but sample times > 1. Auto turned to 1.')
+            self.args.sample_times = 1
+
     def restore_model(self) -> torch.nn.Module:
         """
         Load trained model and allocate corresponding data splitter.
@@ -207,6 +217,7 @@ class Tester:
             self.model = Seq2SeqLSTM
             model = Seq2SeqLSTM(input_dim=2,
                                 output_dim=5,
+                                pred_length=train_args.pred_len,
                                 emd_size=train_args.embedding_size,
                                 cell_size=train_args.cell_size,
                                 batch_norm=train_args.batch_norm,
@@ -240,7 +251,8 @@ class Tester:
                 pred_gaussian, y_hat = self.model.interface(model=self.model,
                                                             datax=x,
                                                             pred_len=self.args.pred_len,
-                                                            sample_times=self.args.sample_times)
+                                                            sample_times=self.args.sample_times,
+                                                            use_sample=self.args.use_sample)
                 # data post process
                 abs_x, abs_y = self.model.evaluation_data_splitter(data, self.args.pred_len)
                 abs_y_hat = self.test_dataset.post_process(y_hat, start=torch.unsqueeze(abs_x[:, -1, :], dim=1))
@@ -250,7 +262,8 @@ class Tester:
                 pred_gaussian, y_hat = self.model.interface(model=self.model,
                                                             datax=x,
                                                             pred_len=self.args.pred_len,
-                                                            sample_times=self.args.sample_times)
+                                                            sample_times=self.args.sample_times,
+                                                            use_sample=self.args.use_sample)
                 abs_x = x
                 abs_y = y
                 abs_y_hat = y_hat
@@ -285,23 +298,23 @@ class Tester:
             record['step'] = step
             record['title'] = msg2
 
-            record['x'] = x.cpu()
-            record['abs_x'] = abs_x.cpu()
-            record['y'] = y.cpu()
-            record['abs_y'] = abs_y.cpu()
-            record['y_hat'] = y_hat.cpu()
-            record['abs_y_hat'] = abs_y_hat.cpu()
-            record['gaussian_output'] = pred_gaussian.cpu()
+            record['x'] = x.cpu().numpy()
+            record['abs_x'] = abs_x.cpu().numpy()
+            record['y'] = y.cpu().numpy()
+            record['abs_y'] = abs_y.cpu().numpy()
+            record['y_hat'] = y_hat.cpu().numpy()
+            record['abs_y_hat'] = abs_y_hat.cpu().numpy()
+            record['gaussian_output'] = pred_gaussian.cpu().numpy()
 
-            record['ave_loss'] = ave_loss.cpu()
-            record['final_loss'] = final_loss.cpu()
-            record['first_loss'] = first_loss.cpu()
-            record['ave_l2'] = ave_l2.cpu()
-            record['final_l2'] = final_l2.cpu()
-            record['ade'] = ade.cpu()
-            record['fde'] = fde.cpu()
-            record['min_ade'] = min_ade.cpu()
-            record['min_fde'] = min_fde.cpu()
+            record['ave_loss'] = ave_loss.cpu().numpy()
+            record['final_loss'] = final_loss.cpu().numpy()
+            record['first_loss'] = first_loss.cpu().numpy()
+            record['ave_l2'] = ave_l2.cpu().numpy()
+            record['final_l2'] = final_l2.cpu().numpy()
+            record['ade'] = ade.cpu().numpy()
+            record['fde'] = fde.cpu().numpy()
+            record['min_ade'] = min_ade.cpu().numpy()
+            record['min_fde'] = min_fde.cpu().numpy()
 
             save_list.append(record)
 
@@ -322,7 +335,7 @@ class Tester:
         # plot
         if self.args.plot:
             self.recorder.logger.info('Plot trajectory')
-            self.recorder.plot_trajectory(save_list, step=step, cat_point=self.args.obs_len - 1)
+            self.recorder.plot_trajectory(save_list, step=step, cat_point=self.args.obs_len - 1, mode=6)
 
         # export
         if self.args.export_path:
