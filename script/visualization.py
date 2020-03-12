@@ -85,8 +85,9 @@ def plot_potential_zone(subplot, abs_x, abs_y, start, gaussian_output, line_args
     if gaussian_output.shape[0] > 1:
         print('Found multiple predicted gaussian output, only print the first.')
 
-    color_zone = ['#7FFFAA', '#FFD700', '#FF7F50']
-    confidence_zone = [9.21, 5.99, 4.60]
+    # color_zone = ['#7FFFAA', '#FFD700', '#FF7F50']
+    color_zone = ['#eef8ec', '#dcf1da', '#cbebc7', '#a8dda1', '#86d07c', '#78cb6d']
+    confidence_zone = [13.82, 9.21, 5.99, 4.60, 3.22, 2.41, 1.39]
 
     # plot zone
     potential_fields = get_potential_zone(start=(start[0, 0, 0], start[0, 0, 1]),
@@ -208,7 +209,7 @@ def get_potential_zone(start, gaussian_output, confidence_zone, color_zone, **kw
         nodes = list()
         verts = list()
         codes = list()
-        verts.append(start)
+        nodes.append(np.array([start[0], start[1]]).reshape((1, 2)))  # (x,y) -> [1,2]
         seq_len = gaussian_output.shape[0]
         # # one side angle = 0
         # for step in range(0, seq_len):
@@ -236,21 +237,23 @@ def get_potential_zone(start, gaussian_output, confidence_zone, color_zone, **kw
                 node = get_vert_of_error_ellipse_by_angle((mux, muy, sx, sy, rho), confidence, angle=angle)
                 nodes.append(node)
 
-        # curve of the semi-ellipse of gaussian distribution in the last step
-        for angle in range(0, 362, 2):
-            mux, muy, sx, sy, rho = gaussian_output[seq_len - 1, :].tolist()
-            node = get_vert_of_error_ellipse_by_angle((mux, muy, sx, sy, rho), confidence, angle=angle)
-            nodes.append(node)
+        # curve of the semi-ellipse of gaussian distribution in the every step
+        for step in range(seq_len):
+            for angle in range(-10, 362, 5):
+                mux, muy, sx, sy, rho = gaussian_output[step, :].tolist()
+                node = get_vert_of_error_ellipse_by_angle((mux, muy, sx, sy, rho), confidence, angle=angle)
+                nodes.append(node)
 
         convex_hall = ConvexHull(np.concatenate(nodes, axis=0))
         for index in convex_hall.vertices:
-            verts.append((nodes[index][..., 0], nodes[index][..., 1]))
+            verts.append(np.array([nodes[index][..., 0], nodes[index][..., 1]]).reshape(1, 2))
 
+        verts.append(verts[0])
+        verts = np.concatenate(verts, axis=0)
         codes.append(Path.MOVETO)
         for _ in range(1, len(verts)):
             codes.append(Path.LINETO)
-        verts.append(verts[0])
-        codes.append(Path.CLOSEPOLY)
+        # codes.append(Path.CLOSEPOLY)
 
         path = Path(vertices=verts, codes=codes)
         patch_path = patches.PathPatch(path, lw=0, facecolor=color, **kwargs)

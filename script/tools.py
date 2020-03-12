@@ -13,7 +13,7 @@ from script.visualization import plot_sample_trajectories, plot_gaussian_ellipse
 confidence = 5.991
 ellipse_args = {'ec': 'blue', 'fill': False, 'lw': 1, 'alpha': 0.5}
 plot_args = {'lw': 2, 'alpha': 0.5, 'marker': '*'}
-patch_args = {'alpha': 0.5}
+patch_args = {'alpha': 0.9}
 
 
 class Recorder:
