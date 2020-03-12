@@ -19,6 +19,22 @@ def make_mlp(dim_list, activation='relu', batch_norm=False, dropout=0):
     return nn.Sequential(*layers)
 
 
+def get_loss_by_name(model_output, y, name):
+    """
+    Calculate different types of models as name.
+    :return: [..., 1]
+    """
+    if name == '2d_gaussian':
+        gaussian_output = get_2d_gaussian(model_output)
+        loss = neg_likelihood_gaussian_pdf_loss(gaussian_output, y)
+    elif name == 'mixed':
+        mixed_output = get_mixed(model_output)
+        loss = neg_likelihood_mixed_pdf(mixed_output, y)
+    else:
+        raise Exception('No support for loss {}'.format(name))
+    return name
+
+
 def l2_loss(pred_traj, pred_traj_gt):
     """
     Input:
@@ -154,16 +170,16 @@ def gaussian_sampler(mux, muy, sx, sy, rho):
     return x[0][0], x[0][1]
 
 
-def get_mixed(model_input):
+def get_mixed(model_output):
     """
     Transform model's output into 1D-gaussian and 1D-laplace.
     parameters are gaussian_x_mu, laplace_y_mu, gaussian_sigma_x, laplace_spread_b, _
-    :param model_input: [..., 5]
+    :param model_output: [..., 5]
     :return: [..., 5]
     """
-    gau_x_mu = model_input[..., 0]
-    lap_y_mu = model_input[..., 1]
-    gau_x_sigma = torch.exp(model_input[..., 2])
-    lap_y_spread = torch.exp(model_input[..., 3])
-    useless = model_input[..., 4]
+    gau_x_mu = model_output[..., 0]
+    lap_y_mu = model_output[..., 1]
+    gau_x_sigma = torch.exp(model_output[..., 2])
+    lap_y_spread = torch.exp(model_output[..., 3])
+    useless = model_output[..., 4]
     return torch.stack([gau_x_mu, lap_y_mu, gau_x_sigma, lap_y_spread, useless], dim=-1)
