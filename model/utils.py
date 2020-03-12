@@ -83,6 +83,49 @@ def neg_likelihood_gaussian_pdf_loss(gaussian_output, target):
     return loss
 
 
+def neg_likelihood_mixed_pdf(mixed_output, target, phi=1):
+    """
+    Calculate loss by non likelihood loss of mixed distribution.
+     1 * Gaussian_PDF(x|mux, sx) + phi * Laplace_PDF(y|muy, sy)
+    :param mixed_output: [..., 5]
+    :param target: [..., 2]
+    :param phi: a float number
+    :return: loss [..., 1]
+    """
+    mu_x, mu_y, sigma_x, spread_y, _ = torch.split(mixed_output, 1, dim=2)
+    tar_x, tar_y = torch.split(target, 1, dim=2)
+
+    def single_gaussian_pdf(x_gt, mux, sigma_x):
+        norm_x = x_gt - mux
+        index = - (norm_x ** 2) / (2 * sigma_x)
+        pdf = torch.exp(index)
+        norm_pdf = pdf / (sigma_x * torch.sqrt(2 * np.pi))
+        return norm_pdf
+
+    def relative_laplace_pdf(y_gt, muy, spread_y):
+        relative_y = muy / y_gt
+        norm_rel_y = torch.abs(relative_y - 1)
+        index = - norm_rel_y / spread_y
+        pdf = torch.exp(index)
+        norm_pdf = pdf / (2 * spread_y)
+        return norm_pdf
+
+    gaussian_pdf = single_gaussian_pdf(tar_x, mu_x, sigma_x)
+    laplace_pdf = relative_laplace_pdf(tar_y, mu_y, spread_y)
+
+    pdf = gaussian_pdf + phi * laplace_pdf
+    epsilon = 1e-14
+    pdf_clip = torch.clamp(pdf, min=epsilon, max=float('inf'))
+
+    loss = -torch.log(pdf_clip)
+
+    assert loss.shape[0] == mixed_output.shape[0]
+    assert loss.shape[1] == mixed_output.shape[1]
+    assert loss.shape[2] == 1
+
+    return loss
+
+
 def get_2d_gaussian(model_output):
     """
     Transform model's output into 2D Gaussian format
@@ -109,3 +152,18 @@ def gaussian_sampler(mux, muy, sx, sy, rho):
     # Sample a point from the multiplytivariate normal distribution
     x = np.random.multivariate_normal(mean, cov, size=1)
     return x[0][0], x[0][1]
+
+
+def get_mixed(model_input):
+    """
+    Transform model's output into 1D-gaussian and 1D-laplace.
+    parameters are gaussian_x_mu, laplace_y_mu, gaussian_sigma_x, laplace_spread_b, _
+    :param model_input: [..., 5]
+    :return: [..., 5]
+    """
+    gau_x_mu = model_input[..., 0]
+    lap_y_mu = model_input[..., 1]
+    gau_x_sigma = torch.exp(model_input[..., 2])
+    lap_y_spread = torch.exp(model_input[..., 3])
+    useless = model_input[..., 4]
+    return torch.stack([gau_x_mu, lap_y_mu, gau_x_sigma, lap_y_spread, useless], dim=-1)
