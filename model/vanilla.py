@@ -4,7 +4,7 @@ import time
 
 from torch import nn, optim
 import torch
-from model.utils import make_mlp, get_2d_gaussian, gaussian_sampler, neg_likelihood_gaussian_pdf_loss
+from model.utils import make_mlp, get_2d_gaussian, get_mixed, gaussian_sampler
 from script.cuda import get_device, to_device
 
 
@@ -89,37 +89,72 @@ class VanillaLSTM(torch.nn.Module):
         return datax, datay
 
     @staticmethod
-    def train_step(vanilla, x, pred_len):
+    def train_step(vanilla, x, **kwargs):
         """
         Run one train step
         :param vanilla: vanilla model
         :param x: [batch_size, obs_len, 2]
-        :param pred_len: length of prediction
         :return: dict()
         """
         model_output, _ = vanilla(x, hc=None)
-        gaussian_output = get_2d_gaussian(model_output=model_output)
-        gaussian_output = gaussian_output[:, -pred_len:, :]
-        return {'gaussian_output': gaussian_output}
+        model_output = model_output[:, -kwargs['pred_len']:, :]
+        return {'model_output': model_output}
 
     @staticmethod
-    def interface(model, datax, pred_len, sample_times, use_sample):
+    def interface(model, datax, pred_len, distribution, sample_times, use_sample):
         """
         During evaluation, use trained model to interface.
         :param model: Loaded Vanilla Model
         :param datax: obs data [1, obs_len, 2]
         :param pred_len: length of prediction
+        :param distribution: predicted distribution of [x,y]
         :param sample_times: times of sampling trajectories
         :param use_sample: if True, applying sample in interface. if False, use average value in gaussian.
         :return: gaussian_output [sample_times, pred_len, 5], location_output[sample_times, pred_len, 2]
         """
         device = datax.device
+
+        if distribution is not '2d_gaussian' and use_sample:
+            raise Exception('No sample support for {}'.format(distribution))
+
         with torch.no_grad():
-            sample_gaussian = list()
+            sample_distribution = list()
             sample_location = list()
-            for _ in range(sample_times):
-                rel_y_hat = to_device(torch.zeros((1, pred_len, 2)), device)
-                gaussian_output = to_device(torch.zeros((1, pred_len, 5)), device)
+            if distribution == '2d_gaussian':
+                for _ in range(sample_times):
+                    y_hat = to_device(torch.zeros((1, pred_len, 2)), device)
+                    gaussian_output = to_device(torch.zeros((1, pred_len, 5)), device)
+
+                    # initial hidden state
+                    output, hc = model(datax, hc=None)
+                    output = torch.unsqueeze(output[:, -1, :], dim=1)
+
+                    # predict iterative
+                    for itr in range(pred_len):
+                        gaussian_output[0, itr, :] = get_2d_gaussian(output)
+                        if use_sample:
+                            y_hat[0, itr, 0], y_hat[0, itr, 1] = gaussian_sampler(
+                                gaussian_output[0, itr, 0].cpu().numpy(),
+                                gaussian_output[0, itr, 1].cpu().numpy(),
+                                gaussian_output[0, itr, 2].cpu().numpy(),
+                                gaussian_output[0, itr, 3].cpu().numpy(),
+                                gaussian_output[0, itr, 4].cpu().numpy())
+                        else:
+                            y_hat[0, itr, :] = gaussian_output[0, itr, 0:2]
+
+                        if itr == pred_len - 1:
+                            break
+
+                        itr_x = to_device(torch.zeros((1, 1, 2)), device)
+                        itr_x[:, :, :] = y_hat[:, itr, :]
+                        output, hc = model(itr_x, hc)
+
+                    # add sample result
+                    sample_distribution.append(gaussian_output)
+                    sample_location.append(y_hat)
+            elif distribution == 'mixed':
+                y_hat = torch.zeros((1, pred_len, 2), device=device)
+                mixed_output = torch.zeros((1, pred_len, 5), device=device)
 
                 # initial hidden state
                 output, hc = model(datax, hc=None)
@@ -127,26 +162,18 @@ class VanillaLSTM(torch.nn.Module):
 
                 # predict iterative
                 for itr in range(pred_len):
-                    gaussian_output[0, itr, :] = get_2d_gaussian(output)
-                    if use_sample:
-                        rel_y_hat[0, itr, 0], rel_y_hat[0, itr, 1] = gaussian_sampler(
-                            gaussian_output[0, itr, 0].cpu().numpy(),
-                            gaussian_output[0, itr, 1].cpu().numpy(),
-                            gaussian_output[0, itr, 2].cpu().numpy(),
-                            gaussian_output[0, itr, 3].cpu().numpy(),
-                            gaussian_output[0, itr, 4].cpu().numpy())
-                    else:
-                        rel_y_hat[0, itr, :] = gaussian_output[0, itr, 0:2]
+                    mixed_output = get_mixed(output)
+                    y_hat[0, itr, :] = mixed_output[0, itr, 0:2]
 
                     if itr == pred_len - 1:
                         break
 
-                    itr_x_rel = to_device(torch.zeros((1, 1, 2)), device)
-                    itr_x_rel[:, :, :] = rel_y_hat[:, itr, :]
-                    output, hc = model(itr_x_rel, hc)
+                    itr_x = y_hat[0, itr, :].reshape(1, 1, 2)
+                    output, hc = model(itr_x, hc)
 
-                # add sample result
-                sample_gaussian.append(gaussian_output)
-                sample_location.append(rel_y_hat)
+                sample_distribution.append(mixed_output)
+                sample_location.append(y_hat)
+            else:
+                raise Exception('No interface support for {}'.format(distribution))
 
-        return torch.cat(sample_gaussian, dim=0), torch.cat(sample_location, dim=0)
+        return torch.cat(sample_distribution, dim=0), torch.cat(sample_location, dim=0)
