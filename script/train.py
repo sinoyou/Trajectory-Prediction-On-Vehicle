@@ -57,6 +57,7 @@ def run():
     parser.add_argument('--val_use_sample', default=False, type=bool)
     parser.add_argument('--val_sample_times', type=int)
     parser.add_argument('--val_plot', default=False, type=bool)
+    parser.add_argument('--val_plot_mode', default=1, type=bool)
 
     args = parser.parse_args()
     recoder = Recorder()
