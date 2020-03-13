@@ -31,6 +31,7 @@ def test():
     # print
     parser.add_argument('--silence', default=False, type=bool, help='Silent mode, only print global average result.')
     parser.add_argument('--plot', default=False, type=bool, help='plot trajectory on the tensor board.')
+    parser.add_argument('--plot_mode', default=1, type=int)
 
     args = parser.parse_args()
     recorder = Recorder()

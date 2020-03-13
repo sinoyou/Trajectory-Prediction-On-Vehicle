@@ -12,9 +12,8 @@ from script.visualization import plot_sample_trajectories, plot_gaussian_ellipse
 
 confidence = 5.991
 ellipse_args = {'ec': 'blue', 'fill': False, 'lw': 1, 'alpha': 0.5}
-plot_args = {'lw': 3, 'alpha': 0.5}
-patch_args = {'facecolor': '#65be99', 'alpha': 0.01}
-confidence_zone = (1, 10)
+plot_args = {'lw': 2, 'alpha': 0.5, 'marker': '*'}
+patch_args = {'alpha': 0.9}
 
 
 class Recorder:
@@ -58,6 +57,10 @@ class Recorder:
             abs_x = trajectory['abs_x']
             abs_y = trajectory['abs_y']
 
+            # when using relative prediction, gaussian mux and muy should be replaced with absolute for visualization
+            # But this operation changed meaning due to the sigma_x and sigma_y are still for relative.
+            gaussian_output[:, :, 0:2] = abs_y_hat
+
             start = np.expand_dims(abs_x[:, cat_point, :], axis=1)
 
             fig, subplots = plt.subplots(1, num_mode)
@@ -84,7 +87,7 @@ class Recorder:
             # todo Plot 3: Plot predicted potenfial zone according to gaussian Ellipse.
             if mode & 4 != 0:
                 plot_potential_zone(subplot=subplots[subplot_cnt], abs_x=abs_x, abs_y=abs_y, start=start,
-                                    gaussian_output=gaussian_output, confidence_zone=confidence_zone,
+                                    gaussian_output=gaussian_output,
                                     patch_args=patch_args, line_args=plot_args)
 
             plt.legend(loc=2)
