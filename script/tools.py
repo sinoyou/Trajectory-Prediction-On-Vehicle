@@ -57,6 +57,10 @@ class Recorder:
             abs_x = trajectory['abs_x']
             abs_y = trajectory['abs_y']
 
+            # when using relative prediction, gaussian mux and muy should be replaced with absolute for visualization
+            # But this operation changed meaning due to the sigma_x and sigma_y are still for relative.
+            gaussian_output[:, :, 0:2] = abs_y_hat
+
             start = np.expand_dims(abs_x[:, cat_point, :], axis=1)
 
             fig, subplots = plt.subplots(1, num_mode)
