@@ -73,7 +73,7 @@ class KittiDataLoader:
         return {'data': batch_data, 'rel_data': rel_batch_data}
 
     @staticmethod
-    def post_process(y_hat, **kwargs):
+    def rel_to_abs(y_hat, **kwargs):
         """
         Process model generated trajectories points.
             1. from relative to absolute.
