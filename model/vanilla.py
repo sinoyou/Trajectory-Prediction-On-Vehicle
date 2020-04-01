@@ -99,8 +99,8 @@ class VanillaLSTM(torch.nn.Module):
         model_output = model_output[:, -kwargs['pred_len']:, :]
         return {'model_output': model_output}
 
-    def get_loss(self, distribution, y):
-        return get_loss_by_name(distribution, y, self.loss)
+    def get_loss(self, distribution, y_gt):
+        return get_loss_by_name(distribution, y_gt, self.loss)
 
     def inference(self, datax, pred_len, sample_times, use_sample):
         """
@@ -114,13 +114,13 @@ class VanillaLSTM(torch.nn.Module):
         """
         device = datax.device
 
-        if self.distribution is not '2d_gaussian' and use_sample:
-            raise Exception('No sample support for {}'.format(self.distribution))
+        if self.loss != '2d_gaussian' and use_sample:
+            raise Exception('No sample support for {}'.format(self.loss))
 
         with torch.no_grad():
             sample_distribution = list()
             sample_location = list()
-            if self.distribution == '2d_gaussian':
+            if self.loss == '2d_gaussian':
                 for _ in range(sample_times):
                     y_hat = to_device(torch.zeros((1, pred_len, 2)), device)
                     gaussian_output = to_device(torch.zeros((1, pred_len, 5)), device)
@@ -152,7 +152,7 @@ class VanillaLSTM(torch.nn.Module):
                     # add sample result
                     sample_distribution.append(gaussian_output)
                     sample_location.append(y_hat)
-            elif self.distribution == 'mixed':
+            elif self.loss == 'mixed':
                 y_hat = torch.zeros((1, pred_len, 2), device=device)
                 mixed_output = torch.zeros((1, pred_len, 5), device=device)
 
@@ -162,7 +162,7 @@ class VanillaLSTM(torch.nn.Module):
 
                 # predict iterative
                 for itr in range(pred_len):
-                    mixed_output = get_mixed(output)
+                    mixed_output[0, itr, :] = get_mixed(output)
                     y_hat[0, itr, :] = mixed_output[0, itr, 0:2]
 
                     if itr == pred_len - 1:
@@ -174,6 +174,6 @@ class VanillaLSTM(torch.nn.Module):
                 sample_distribution.append(mixed_output)
                 sample_location.append(y_hat)
             else:
-                raise Exception('No inference support for {}'.format(self.distribution))
+                raise Exception('No inference support for {}'.format(self.loss))
 
         return torch.cat(sample_distribution, dim=0), torch.cat(sample_location, dim=0)

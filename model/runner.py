@@ -345,7 +345,7 @@ class Tester:
                 self.recorder.plot_trajectory(save_list, step=step, cat_point=self.args.obs_len - 1,
                                               mode=self.args.plot_mode)
             else:
-                self.recorder.logger.info('[SKIP PLOT] No support for loss {}' % self.model.loss)
+                self.recorder.logger.info('[SKIP PLOT] No support for loss {}'.format(self.model.loss))
 
         # export
         if self.args.export_path:
