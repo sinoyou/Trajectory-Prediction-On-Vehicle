@@ -8,8 +8,7 @@ from tqdm import tqdm
 
 from data.dataloader import KittiDataLoader
 from script.cuda import get_device, to_device
-from model.utils import l2_loss, gaussian_sampler
-from model.utils import get_loss_by_name
+from model.utils import l2_loss
 from model.vanilla import VanillaLSTM
 from model.seq2seq import Seq2SeqLSTM
 
@@ -45,7 +44,8 @@ class Trainer:
                                     emd_size=self.args.embedding_size,
                                     cell_size=self.args.cell_size,
                                     batch_norm=self.args.batch_norm,
-                                    dropout=self.args.dropout)
+                                    dropout=self.args.dropout,
+                                    loss=self.args.loss)
             elif self.args.model == 'seq2seq':
                 model = Seq2SeqLSTM(input_dim=2,
                                     output_dim=5,
@@ -53,7 +53,8 @@ class Trainer:
                                     emd_size=self.args.embedding_size,
                                     cell_size=self.args.cell_size,
                                     batch_norm=self.args.batch_norm,
-                                    dropout=self.args.dropout)
+                                    dropout=self.args.dropout,
+                                    loss=self.args.loss)
             else:
                 raise Exception('Model {} not implemented.'.format(self.args.model))
         else:
@@ -104,8 +105,8 @@ class Trainer:
                 x, y = self.model.train_data_splitter(data, self.args.pred_len)
 
                 # forward
-                result = self.model.train_step(self.model, x, pred_len=self.args.pred_len)
-                loss = get_loss_by_name(result['model_output'], y, self.args.loss)
+                result = self.model.train_step(x, pred_len=self.args.pred_len)
+                loss = self.model.get_loss(result['model_output'], y)
                 ave_loss = torch.sum(loss) / (self.args.batch_size * self.args.pred_len)
 
                 # backward
@@ -162,12 +163,12 @@ class Trainer:
             'load_path': os.path.join(self.args.save_dir, 'temp_checkpoint_val'),
             'obs_len': self.args.val_obs_len,
             'pred_len': self.args.val_pred_len,
-            'distribution': self.args.loss,
             'sample_times': self.args.val_sample_times,
             'use_sample': self.args.val_use_sample,
             'test_dataset': self.args.val_dataset,
             'silence': True,
             'plot': self.args.val_plot,
+            'plot_mode': self.args.val_plot_mode,
             'relative': self.args.relative,
             'export_path': None
         })
@@ -178,6 +179,7 @@ class Trainer:
 class Tester:
     def __init__(self, args, recorder):
         self.args = args
+        self.train_args = None
         self.recorder = recorder
         self.device = torch.device('cpu')
         self.test_dataset = KittiDataLoader(self.args.test_dataset,
@@ -185,7 +187,6 @@ class Tester:
                                             self.args.obs_len + self.args.pred_len,
                                             self.device,
                                             self.args.relative)
-        self.sampler = gaussian_sampler
         self.model = to_device(self.restore_model().train(False), self.device)
 
         self.args_check()
@@ -205,6 +206,7 @@ class Tester:
 
         checkpoint = torch.load(self.args.load_path, map_location=self.device)
         train_args = checkpoint['args']
+        self.train_args = train_args
         if self.args.model == 'vanilla':
             self.model = VanillaLSTM
             model = VanillaLSTM(input_dim=2,
@@ -212,7 +214,8 @@ class Tester:
                                 emd_size=train_args.embedding_size,
                                 cell_size=train_args.cell_size,
                                 batch_norm=train_args.batch_norm,
-                                dropout=train_args.dropout)
+                                dropout=train_args.dropout,
+                                loss=train_args.loss)
         elif self.args.model == 'seq2seq':
             self.model = Seq2SeqLSTM
             model = Seq2SeqLSTM(input_dim=2,
@@ -221,7 +224,8 @@ class Tester:
                                 emd_size=train_args.embedding_size,
                                 cell_size=train_args.cell_size,
                                 batch_norm=train_args.batch_norm,
-                                dropout=train_args.dropout)
+                                dropout=train_args.dropout,
+                                loss=train_args.loss)
         else:
             raise Exception('Model {} not implemented. '.format(self.args.model))
 
@@ -248,9 +252,7 @@ class Tester:
             data, rel_data = batch['data'], batch['rel_data']
             if self.args.relative:
                 x, y = self.model.evaluation_data_splitter(rel_data, self.args.pred_len)
-                pred_distribution, y_hat = self.model.interface(model=self.model,
-                                                                datax=x,
-                                                                distribution=self.args.distribution,
+                pred_distribution, y_hat = self.model.inference(datax=x,
                                                                 pred_len=self.args.pred_len,
                                                                 sample_times=self.args.sample_times,
                                                                 use_sample=self.args.use_sample)
@@ -260,9 +262,7 @@ class Tester:
 
             else:
                 x, y = self.model.evaluation_data_splitter(data, self.args.pred_len)
-                pred_distribution, y_hat = self.model.interface(model=self.model,
-                                                                datax=x,
-                                                                distribution=self.args.distribution,
+                pred_distribution, y_hat = self.model.inference(datax=x,
                                                                 pred_len=self.args.pred_len,
                                                                 sample_times=self.args.sample_times,
                                                                 use_sample=self.args.use_sample)
@@ -271,7 +271,7 @@ class Tester:
                 abs_y_hat = y_hat
 
             # metric calculate
-            loss = get_loss_by_name(pred_distribution, y, self.args.distribution)
+            loss = self.model.get_loss(distribution=pred_distribution, y_gt=y)
             l2 = l2_loss(y_hat, y)
             euler = l2_loss(abs_y_hat, abs_y)
 
@@ -287,8 +287,8 @@ class Tester:
             min_ade = torch.min(torch.sum(euler, dim=[1, 2]) / self.args.pred_len)
             min_fde = torch.min(euler[:, -1, :])
 
-            msg1 = '{}_{}_AveLoss_{:.3}_AveL2_{:.3}_FinalL2_{:.3}'.format(
-                self.args.distribution, t, ave_loss, ave_l2, final_l2)
+            msg1 = '{}_AveLoss_{:.3}_AveL2_{:.3}_FinalL2_{:.3}'.format(
+                t, ave_loss, ave_l2, final_l2)
             msg2 = '{}_Ade_{:.3}_Fde_{:.3}_MAde_{:.3f}_MFde_{:.3f}'.format(
                 t, ade, fde, min_ade, min_fde)
             if not self.args.silence:
@@ -336,12 +336,16 @@ class Tester:
 
         # plot
         if self.args.plot:
-            if self.args.distribution == '2d_gaussian':
+            if self.model.loss == '2d_gaussian':
+                self.recorder.logger.info('Plot trajectory')
+                self.recorder.plot_trajectory(save_list, step=step, cat_point=self.args.obs_len - 1,
+                                              mode=self.args.plot_mode)
+            elif self.model.loss == 'mixed' and self.args.plot_mode == 1:
                 self.recorder.logger.info('Plot trajectory')
                 self.recorder.plot_trajectory(save_list, step=step, cat_point=self.args.obs_len - 1,
                                               mode=self.args.plot_mode)
             else:
-                self.recorder.logger.info('[SKIP PLOT] No support for loss {}' % self.args.loss)
+                self.recorder.logger.info('[SKIP PLOT] No support for loss {}' % self.model.loss)
 
         # export
         if self.args.export_path:

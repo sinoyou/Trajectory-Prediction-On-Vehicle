@@ -26,13 +26,13 @@ def get_loss_by_name(model_output, y, name):
     """
     if name == '2d_gaussian':
         gaussian_output = get_2d_gaussian(model_output)
-        loss = neg_likelihood_gaussian_pdf_loss(gaussian_output, y)
+        loss = neg_likelihood_gaussian_pdf(gaussian_output, y)
     elif name == 'mixed':
         mixed_output = get_mixed(model_output)
         loss = neg_likelihood_mixed_pdf(mixed_output, y)
     else:
         raise Exception('No support for loss {}'.format(name))
-    return name
+    return loss
 
 
 def l2_loss(pred_traj, pred_traj_gt):
@@ -47,7 +47,7 @@ def l2_loss(pred_traj, pred_traj_gt):
     return torch.sqrt(torch.sum(loss, dim=2, keepdim=True))
 
 
-def neg_likelihood_gaussian_pdf_loss(gaussian_output, target):
+def neg_likelihood_gaussian_pdf(gaussian_output, target):
     """
     Negative log likelihood loss based on 2D Gaussian Distribution
     :param gaussian_output: Tensor[batch_size, pred_length, 5] [mu_x, mu_y, sigma_x, sigma_y, cor]
@@ -75,7 +75,6 @@ def neg_likelihood_gaussian_pdf_loss(gaussian_output, target):
         index = torch.div(z, torch.mul(torch.sub(torch.pow(rho, 2), 1), 2))
         pdf = torch.exp(index)
         norm_pdf = torch.div(pdf, torch.mul(2 * np.pi, torch.mul(sxsy, torch.sqrt(torch.sub(1, torch.pow(rho, 2))))))
-        # norm_pdf = pdf / (2 * np.pi * sxsy * torch.sqrt(1 - rho ** 2))
         return norm_pdf
 
     step = 1e-2
@@ -115,7 +114,7 @@ def neg_likelihood_mixed_pdf(mixed_output, target, phi=1):
         norm_x = x_gt - mux
         index = - (norm_x ** 2) / (2 * sigma_x)
         pdf = torch.exp(index)
-        norm_pdf = pdf / (sigma_x * torch.sqrt(2 * np.pi))
+        norm_pdf = pdf / (sigma_x * np.sqrt(2 * np.pi))
         return norm_pdf
 
     def relative_laplace_pdf(y_gt, muy, spread_y):
@@ -129,11 +128,11 @@ def neg_likelihood_mixed_pdf(mixed_output, target, phi=1):
     gaussian_pdf = single_gaussian_pdf(tar_x, mu_x, sigma_x)
     laplace_pdf = relative_laplace_pdf(tar_y, mu_y, spread_y)
 
-    pdf = gaussian_pdf + phi * laplace_pdf
     epsilon = 1e-14
-    pdf_clip = torch.clamp(pdf, min=epsilon, max=float('inf'))
+    gaussian_pdf_clip = torch.clamp(gaussian_pdf, min=epsilon, max=float('inf'))
+    laplace_pdf_clip = torch.clamp(laplace_pdf, min=epsilon, max=float('inf'))
 
-    loss = -torch.log(pdf_clip)
+    loss = - (torch.log(gaussian_pdf_clip) + torch.log(laplace_pdf_clip))
 
     assert loss.shape[0] == mixed_output.shape[0]
     assert loss.shape[1] == mixed_output.shape[1]

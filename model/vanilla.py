@@ -4,15 +4,15 @@ import time
 
 from torch import nn, optim
 import torch
-from model.utils import make_mlp, get_2d_gaussian, get_mixed, gaussian_sampler
+from model.utils import make_mlp, get_2d_gaussian, get_mixed, gaussian_sampler, get_loss_by_name
 from script.cuda import get_device, to_device
 
 
 class VanillaLSTM(torch.nn.Module):
 
-    def __init__(self, input_dim=2, output_dim=5,
-                 emd_size=128, cell_size=128,
-                 batch_norm=True, dropout=0):
+    def __init__(self, input_dim, output_dim,
+                 emd_size, cell_size,
+                 batch_norm, dropout, loss):
         """
         Implement of Vanilla LSTM as in paper "social lstm".
         For each forward process, sequence length is dynamic.
@@ -25,12 +25,14 @@ class VanillaLSTM(torch.nn.Module):
         :param cell_size: default 128
         :param batch_norm: default True
         :param dropout: default 0
+        :param loss: loss type - 2d_gaussian, mixed
         """
         super(VanillaLSTM, self).__init__()
         self.input_dim = input_dim
         self.output_dim = output_dim
         self.emd_size = emd_size
         self.cell_size = cell_size
+        self.loss = loss
 
         self.input_norm = torch.nn.BatchNorm1d(self.input_dim) if batch_norm else None
         self.input_emd_layer = make_mlp([self.input_dim, self.emd_size],
@@ -62,8 +64,7 @@ class VanillaLSTM(torch.nn.Module):
             outputs.append(emd_output)
         return torch.stack(outputs, dim=1), hc
 
-    @staticmethod
-    def train_data_splitter(batch_data, pred_len):
+    def train_data_splitter(self, batch_data, pred_len):
         """
         Split data [batch_size, total_len, 2] into datax and datay in train/val mode
         :param batch_data: data to be split
@@ -75,8 +76,7 @@ class VanillaLSTM(torch.nn.Module):
         datay = batch_data[:, total_len - pred_len:, :]
         return datax, datay
 
-    @staticmethod
-    def evaluation_data_splitter(batch_data, pred_len):
+    def evaluation_data_splitter(self, batch_data, pred_len):
         """
         Split data [batch_size, total_len, 2] into datax and datay in val/evaluation mode
         :param batch_data: data to be split
@@ -88,45 +88,45 @@ class VanillaLSTM(torch.nn.Module):
         datay = batch_data[:, -pred_len:, :]
         return datax, datay
 
-    @staticmethod
-    def train_step(vanilla, x, **kwargs):
+    def train_step(self, x, **kwargs):
         """
         Run one train step
         :param vanilla: vanilla model
         :param x: [batch_size, obs_len, 2]
         :return: dict()
         """
-        model_output, _ = vanilla(x, hc=None)
+        model_output, _ = self(x, hc=None)
         model_output = model_output[:, -kwargs['pred_len']:, :]
         return {'model_output': model_output}
 
-    @staticmethod
-    def interface(model, datax, pred_len, distribution, sample_times, use_sample):
+    def get_loss(self, distribution, y):
+        return get_loss_by_name(distribution, y, self.loss)
+
+    def inference(self, datax, pred_len, sample_times, use_sample):
         """
-        During evaluation, use trained model to interface.
+        During evaluation, use trained model to inference.
         :param model: Loaded Vanilla Model
         :param datax: obs data [1, obs_len, 2]
         :param pred_len: length of prediction
-        :param distribution: predicted distribution of [x,y]
         :param sample_times: times of sampling trajectories
-        :param use_sample: if True, applying sample in interface. if False, use average value in gaussian.
+        :param use_sample: if True, applying sample in inference. if False, use average value in gaussian.
         :return: gaussian_output [sample_times, pred_len, 5], location_output[sample_times, pred_len, 2]
         """
         device = datax.device
 
-        if distribution is not '2d_gaussian' and use_sample:
-            raise Exception('No sample support for {}'.format(distribution))
+        if self.distribution is not '2d_gaussian' and use_sample:
+            raise Exception('No sample support for {}'.format(self.distribution))
 
         with torch.no_grad():
             sample_distribution = list()
             sample_location = list()
-            if distribution == '2d_gaussian':
+            if self.distribution == '2d_gaussian':
                 for _ in range(sample_times):
                     y_hat = to_device(torch.zeros((1, pred_len, 2)), device)
                     gaussian_output = to_device(torch.zeros((1, pred_len, 5)), device)
 
                     # initial hidden state
-                    output, hc = model(datax, hc=None)
+                    output, hc = self(datax, hc=None)
                     output = torch.unsqueeze(output[:, -1, :], dim=1)
 
                     # predict iterative
@@ -147,17 +147,17 @@ class VanillaLSTM(torch.nn.Module):
 
                         itr_x = to_device(torch.zeros((1, 1, 2)), device)
                         itr_x[:, :, :] = y_hat[:, itr, :]
-                        output, hc = model(itr_x, hc)
+                        output, hc = self(itr_x, hc)
 
                     # add sample result
                     sample_distribution.append(gaussian_output)
                     sample_location.append(y_hat)
-            elif distribution == 'mixed':
+            elif self.distribution == 'mixed':
                 y_hat = torch.zeros((1, pred_len, 2), device=device)
                 mixed_output = torch.zeros((1, pred_len, 5), device=device)
 
                 # initial hidden state
-                output, hc = model(datax, hc=None)
+                output, hc = self(datax, hc=None)
                 output = torch.unsqueeze(output[:, -1, :], dim=1)
 
                 # predict iterative
@@ -169,11 +169,11 @@ class VanillaLSTM(torch.nn.Module):
                         break
 
                     itr_x = y_hat[0, itr, :].reshape(1, 1, 2)
-                    output, hc = model(itr_x, hc)
+                    output, hc = self(itr_x, hc)
 
                 sample_distribution.append(mixed_output)
                 sample_location.append(y_hat)
             else:
-                raise Exception('No interface support for {}'.format(distribution))
+                raise Exception('No inference support for {}'.format(self.distribution))
 
         return torch.cat(sample_distribution, dim=0), torch.cat(sample_location, dim=0)

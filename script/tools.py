@@ -52,7 +52,7 @@ class Recorder:
         for i, trajectory in enumerate(trajectories):
             progress.update(1)
             tag = trajectory['tag']
-            gaussian_output = trajectory['gaussian_output']
+            gaussian_output = trajectory['pred_distribution']
             abs_y_hat = trajectory['abs_y_hat']
             abs_x = trajectory['abs_x']
             abs_y = trajectory['abs_y']
@@ -68,20 +68,19 @@ class Recorder:
 
             subplot_cnt = 0
             # Plot 1: Plot predicted sample trajectories.
-            if mode & 1 != 0:
+            if (mode & 1) != 0:
                 plot_sample_trajectories(subplot=subplots[subplot_cnt], abs_x=abs_x, abs_y=abs_y,
                                          start=start, abs_y_hat=abs_y_hat, line_args=plot_args)
                 subplot_cnt += 1
 
             # Plot 2: Plot predicted gaussian Ellipse.
-            if mode & 2 != 0:
+            if (mode & 2) != 0:
                 plot_gaussian_ellipse(subplot=subplots[subplot_cnt], abs_x=abs_x, abs_y=abs_y, start=start,
                                       gaussian_output=gaussian_output, confidence=confidence,
                                       ellipse_args=ellipse_args, line_args=plot_args)
                 subplot_cnt += 1
 
-            # todo Plot 3: Plot predicted potenfial zone according to gaussian Ellipse.
-            if mode & 4 != 0:
+            if (mode & 4) != 0:
                 plot_potential_zone(subplot=subplots[subplot_cnt], abs_x=abs_x, abs_y=abs_y, start=start,
                                     gaussian_output=gaussian_output,
                                     patch_args=patch_args, line_args=plot_args)
