@@ -112,7 +112,7 @@ def neg_likelihood_mixed_pdf(mixed_output, target, phi=1):
 
     def single_gaussian_pdf(x_gt, mux, sigma_x):
         norm_x = x_gt - mux
-        index = - (norm_x ** 2) / (2 * sigma_x)
+        index = - (norm_x ** 2) / (2 * (sigma_x ** 2))
         pdf = torch.exp(index)
         norm_pdf = pdf / (sigma_x * np.sqrt(2 * np.pi))
         return norm_pdf
@@ -132,7 +132,7 @@ def neg_likelihood_mixed_pdf(mixed_output, target, phi=1):
     gaussian_pdf_clip = torch.clamp(gaussian_pdf, min=epsilon, max=float('inf'))
     laplace_pdf_clip = torch.clamp(laplace_pdf, min=epsilon, max=float('inf'))
 
-    loss = - (torch.log(gaussian_pdf_clip) + torch.log(laplace_pdf_clip))
+    loss = - (torch.log(gaussian_pdf_clip) + phi * torch.log(laplace_pdf_clip))
 
     assert loss.shape[0] == mixed_output.shape[0]
     assert loss.shape[1] == mixed_output.shape[1]
