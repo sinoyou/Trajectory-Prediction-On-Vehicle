@@ -33,6 +33,7 @@ def run():
     parser.add_argument('--dropout', default=0.0, type=float)
     parser.add_argument('--batch_norm', default=False, type=bool)
     parser.add_argument('--bbox', default=False, type=bool)
+    parser.add_argument('--loss', type=str, help='Supporting : 2d_gaussian, mixed')
 
     # train arguments
     parser.add_argument('--batch_size', default=128, type=int)
@@ -57,7 +58,7 @@ def run():
     parser.add_argument('--val_use_sample', default=False, type=bool)
     parser.add_argument('--val_sample_times', type=int)
     parser.add_argument('--val_plot', default=False, type=bool)
-    parser.add_argument('--val_plot_mode', default=1, type=bool)
+    parser.add_argument('--val_plot_mode', default=1, type=int)
 
     args = parser.parse_args()
     recoder = Recorder()

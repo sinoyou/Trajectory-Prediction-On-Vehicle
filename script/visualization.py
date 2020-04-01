@@ -46,6 +46,7 @@ def plot_gaussian_ellipse(subplot, abs_x, abs_y, start, gaussian_output, confide
 
     if gaussian_output.shape[0] > 1:
         print('Found multiple predicted gaussian output, only print the first.')
+        gaussian_output = gaussian_output[0:1, :, :]
 
     # plot center of gaussian
     abs_y_hat = gaussian_output[:, :, 0:2]
@@ -84,6 +85,7 @@ def plot_potential_zone(subplot, abs_x, abs_y, start, gaussian_output, line_args
         ellipse_args = dict()
     if gaussian_output.shape[0] > 1:
         print('Found multiple predicted gaussian output, only print the first.')
+        gaussian_output = gaussian_output[0:1, :, :]
 
     # color_zone = ['#7FFFAA', '#FFD700', '#FF7F50']
     color_zone = ['#eef8ec', '#dcf1da', '#cbebc7', '#a8dda1', '#86d07c', '#78cb6d']
@@ -115,6 +117,7 @@ def plot_potential_zone(subplot, abs_x, abs_y, start, gaussian_output, line_args
     return subplot
 
 
+# Useless
 def plot_potential_heat_map(subplot, abs_x, abs_y, start, abs_y_hat, gaussian_output,
                             src='sample',
                             sample_times=50,
