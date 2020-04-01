@@ -31,7 +31,7 @@ def plot_sample_trajectories(subplot, abs_x, abs_y, start, abs_y_hat, line_args=
     subplot.plot(abs_y_cat_x[0, :, 0], abs_y_cat_x[0, :, 1], color='goldenrod', label='y_gt', **line_args)
 
     # extents
-    extents = get_extents(abs_x, abs_y, abs_y_hat)
+    extents = get_extents(abs_x, abs_y, abs_y_hat, rate=1)
     subplot.axis(extents)
 
     return subplot
@@ -68,7 +68,7 @@ def plot_gaussian_ellipse(subplot, abs_x, abs_y, start, gaussian_output, confide
     subplot.plot(abs_y_cat_x[0, :, 0], abs_y_cat_x[0, :, 1], color='goldenrod', label='y_gt', **line_args)
 
     # extents
-    extents = get_extents(abs_x, abs_y, gaussian_output[:, :, 0:2], rate=2)
+    extents = get_extents(abs_x, abs_y, gaussian_output[:, :, 0:2], rate=1)
     subplot.axis(extents)
 
     return subplot
@@ -112,7 +112,7 @@ def plot_potential_zone(subplot, abs_x, abs_y, start, gaussian_output, line_args
     # subplot.add_patch(ellipse_patch)
 
     # extents
-    extents = get_extents(abs_x, abs_y, gaussian_output[:, :, 0:2], rate=2)
+    extents = get_extents(abs_x, abs_y, gaussian_output[:, :, 0:2], rate=1)
     subplot.axis(extents)
     return subplot
 
@@ -214,23 +214,6 @@ def get_potential_zone(start, gaussian_output, confidence_zone, color_zone, **kw
         codes = list()
         nodes.append(np.array([start[0], start[1]]).reshape((1, 2)))  # (x,y) -> [1,2]
         seq_len = gaussian_output.shape[0]
-        # # one side angle = 0
-        # for step in range(0, seq_len):
-        #     mux, muy, sx, sy, rho = gaussian_output[step, :].tolist()
-        #     vert = get_vert_of_error_ellipse_by_angle((mux, muy, sx, sy, rho), confidence, angle=-90)
-        #     verts.append(vert)
-        #
-        # # curve of the semi-ellipse of gaussian distribution in the last step
-        # for angle in range(-90, 90, 10):
-        #     mux, muy, sx, sy, rho = gaussian_output[seq_len - 1, :].tolist()
-        #     vert = get_vert_of_error_ellipse_by_angle((mux, muy, sx, sy, rho), confidence, angle=angle)
-        #     verts.append(vert)
-        #
-        # # one side angle = 180
-        # for step in range(seq_len - 1, -1, -1):
-        #     mux, muy, sx, sy, rho = gaussian_output[step, :].tolist()
-        #     vert = get_vert_of_error_ellipse_by_angle((mux, muy, sx, sy, rho), confidence, angle=90)
-        #     verts.append(vert)
 
         # one side angle = 0, 90, 180, 270
         angle_list = [0, 90, 180, 270, 0]

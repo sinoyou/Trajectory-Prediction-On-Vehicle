@@ -339,11 +339,11 @@ class Tester:
             if self.model.loss == '2d_gaussian':
                 self.recorder.logger.info('Plot trajectory')
                 self.recorder.plot_trajectory(save_list, step=step, cat_point=self.args.obs_len - 1,
-                                              mode=self.args.plot_mode)
+                                              mode=self.args.plot_mode, relavtive=self.args.relative)
             elif self.model.loss == 'mixed' and self.args.plot_mode == 1:
                 self.recorder.logger.info('Plot trajectory')
                 self.recorder.plot_trajectory(save_list, step=step, cat_point=self.args.obs_len - 1,
-                                              mode=self.args.plot_mode)
+                                              mode=self.args.plot_mode, relavtive=self.args.relative)
             else:
                 self.recorder.logger.info('[SKIP PLOT] No support for loss {}'.format(self.model.loss))
 
