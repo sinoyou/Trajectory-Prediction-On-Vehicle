@@ -4,7 +4,6 @@ import numpy as np
 import os
 import random
 
-from script.cuda import get_device, to_device
 from script.tools import rel_to_abs, abs_to_rel
 
 
