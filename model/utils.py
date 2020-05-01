@@ -86,7 +86,7 @@ def neg_likelihood_gaussian_pdf(gaussian_output, target):
     pdf_ave = (pdf1 + pdf2 + pdf3 + pdf4) / 4.0
     # print(torch.cat((tar_x, tar_y, pdf1, pdf2, pdf3, pdf4), dim=-1))
     # print(torch.cat((mu_x, mu_y, sigma_x, sigma_y, cor, pdf_ave), dim=-1))
-    epsilon = 1e-14
+    epsilon = float('-inf')
     pdf_ave = torch.clamp(pdf_ave, min=epsilon, max=float('inf'))
 
     loss = - torch.log(pdf_ave)
@@ -128,7 +128,7 @@ def neg_likelihood_mixed_pdf(mixed_output, target, phi=1):
     gaussian_pdf = single_gaussian_pdf(tar_x, mu_x, sigma_x)
     laplace_pdf = relative_laplace_pdf(tar_y, mu_y, spread_y)
 
-    epsilon = 1e-14
+    epsilon = float('-inf')
     gaussian_pdf_clip = torch.clamp(gaussian_pdf, min=epsilon, max=float('inf'))
     laplace_pdf_clip = torch.clamp(laplace_pdf, min=epsilon, max=float('inf'))
 
