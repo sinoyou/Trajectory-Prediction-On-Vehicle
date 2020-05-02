@@ -23,6 +23,8 @@ def test():
 
     # dataset
     parser.add_argument('--test_dataset', type=str)
+    parser.add_argument('--test_scene', nargs='+', type=int)
+    # scenes are used for validation. call in cmd like this: --test_scene 8
     parser.add_argument('--relative', default=False, type=bool)
 
     # save
@@ -33,6 +35,7 @@ def test():
     parser.add_argument('--plot', default=False, type=bool, help='plot trajectory on the tensor board.')
     parser.add_argument('--plot_mode', default=1, type=int)
 
+    # transform test_scene from string to list()
     args = parser.parse_args()
     recorder = Recorder()
     tester = Tester(args, recorder)
