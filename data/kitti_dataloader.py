@@ -1,4 +1,3 @@
-import torch
 import numpy as np
 import random
 import pandas as pd
@@ -86,7 +85,7 @@ class SingleKittiDataLoader:
 
         return data
 
-    def reset_prt(self):
+    def reset_ptr(self):
         self.batch_ptr = 0
 
     def next_batch(self):
@@ -100,8 +99,8 @@ class SingleKittiDataLoader:
         if trajectory.shape[-1] == 5:
             trajectory[..., 0] = trajectory[..., 0] * self.loc_x_std + self.loc_x_mean
             trajectory[..., 1] = trajectory[..., 1] * self.loc_z_std + self.loc_z_mean
-            trajectory[..., 2] = trajectory[..., 0] * self.loc_x_std
-            trajectory[..., 3] = trajectory[..., 0] * self.loc_z_std
+            trajectory[..., 2] = trajectory[..., 2] * self.loc_x_std
+            trajectory[..., 3] = trajectory[..., 3] * self.loc_z_std
             return trajectory
         elif trajectory.shape[-1] == 2:
             trajectory[..., 0] = trajectory[..., 0] * self.loc_x_std + self.loc_x_mean
@@ -132,3 +131,5 @@ class SingleKittiDataLoader:
 if __name__ == '__main__':
     dl = SingleKittiDataLoader('kitti-all-label02.csv', batch_size=4,
                                trajectory_length=12, device=torch.device('cpu'), leave_scene=[0])
+    x = dl.next_batch()
+    print(x)
