@@ -20,6 +20,8 @@ def train(args, recorder):
 def run():
     # dataset control
     parser.add_argument('--train_dataset', type=str)
+    parser.add_argument('--leave_scene', nargs='+', type=int)
+    # scenes are leaved and don't train. call in cmd like this: --leave_scene 1 2 3 4
     parser.add_argument('--relative', default=False, type=bool, help='Use relative trajectory instead of relative')
     parser.add_argument('--total_len', default=11, type=int, help='Total length of trajectory when forward once.')
     parser.add_argument('--pred_len', default=1, type=int, help='Length of trajectory participated in loss calc.')
@@ -53,6 +55,8 @@ def run():
 
     # validation arguments
     parser.add_argument('--val_dataset', type=str)
+    parser.add_argument('--val_scene', nargs='+', type=int)
+    # scenes are used for validation. call in cmd like this: --val_scene 8
     parser.add_argument('--val_obs_len', type=int)
     parser.add_argument('--val_pred_len', type=int)
     parser.add_argument('--val_use_sample', default=False, type=bool)
@@ -60,7 +64,9 @@ def run():
     parser.add_argument('--val_plot', default=False, type=bool)
     parser.add_argument('--val_plot_mode', default=1, type=int)
 
+    # transform leave scene & val scene from string to list
     args = parser.parse_args()
+
     recoder = Recorder()
     recoder.logger.info(args)
     train(args, recoder)

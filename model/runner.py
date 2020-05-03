@@ -6,7 +6,8 @@ import time
 from attrdict import AttrDict
 from tqdm import tqdm
 
-from data.dataloader import KittiDataLoader
+# from data.dataloader import KittiDataLoader
+from data.kitti_dataloader import SingleKittiDataLoader
 from script.cuda import get_device, to_device
 from model.utils import l2_loss
 from model.vanilla import VanillaLSTM
@@ -25,11 +26,11 @@ class Trainer:
         self.recorder = recorder
         self.pre_epoch = 0
         self.model, self.optimizer = self.build()
-        self.data_loader = KittiDataLoader(self.args.train_dataset,
-                                           self.args.batch_size,
-                                           self.args.total_len,
-                                           self.device,
-                                           self.args.relative)
+        self.data_loader = SingleKittiDataLoader(self.args.train_dataset,
+                                                 self.args.batch_size,
+                                                 self.args.total_len,
+                                                 self.device,
+                                                 leave_scene=self.args.leave_scene)
 
     def build(self):
         """
@@ -166,6 +167,7 @@ class Trainer:
             'sample_times': self.args.val_sample_times,
             'use_sample': self.args.val_use_sample,
             'test_dataset': self.args.val_dataset,
+            'test_scene': self.args.val_scene,
             'silence': True,
             'plot': self.args.val_plot,
             'plot_mode': self.args.val_plot_mode,
@@ -182,11 +184,11 @@ class Tester:
         self.train_args = None
         self.recorder = recorder
         self.device = torch.device('cpu')
-        self.test_dataset = KittiDataLoader(self.args.test_dataset,
-                                            1,
-                                            self.args.obs_len + self.args.pred_len,
-                                            self.device,
-                                            self.args.relative)
+        self.test_dataset = SingleKittiDataLoader(self.args.test_dataset,
+                                                  1,
+                                                  self.args.obs_len + self.args.pred_len,
+                                                  self.device,
+                                                  valid_scene=self.args.test_scene)
         self.model = to_device(self.restore_model().train(False), self.device)
 
         self.args_check()
@@ -270,8 +272,18 @@ class Tester:
                 abs_y = y
                 abs_y_hat = y_hat
 
+            # transform from norm data to raw data
+            # previous data are in normal scale.
+            norm_abs_x, norm_abs_y, norm_abs_y_hat, norm_pred_distribution = \
+                abs_x, abs_y, abs_y_hat, pred_distribution
+            # now, abs_? & pred_distribution are data in original scale.
+            abs_x = self.test_dataset.norm_to_raw(abs_x)
+            abs_y = self.test_dataset.norm_to_raw(abs_y)
+            abs_y_hat = self.test_dataset.norm_to_raw(abs_y_hat)
+            pred_distribution = self.test_dataset.norm_to_raw(pred_distribution)
+
             # metric calculate
-            loss = self.model.get_loss(distribution=pred_distribution, y_gt=y)
+            loss = self.model.get_loss(distribution=norm_pred_distribution, y_gt=y)
             l2 = l2_loss(y_hat, y)
             euler = l2_loss(abs_y_hat, abs_y)
 
