@@ -106,8 +106,8 @@ class Trainer:
                 x, y = self.model.train_data_splitter(data, self.args.pred_len)
 
                 # forward
-                result = self.model.train_step(x, pred_len=self.args.pred_len)
-                loss = self.model.get_loss(result['model_output'], y)
+                result = self.model.train_step(x, pred_len=self.args.pred_len, y_gt=y)
+                loss = result['loss']
                 ave_loss = torch.sum(loss) / (self.args.batch_size * self.args.pred_len)
 
                 # backward
@@ -254,20 +254,24 @@ class Tester:
             data, rel_data = batch['data'], batch['rel_data']
             if self.args.relative:
                 x, y = self.model.evaluation_data_splitter(rel_data, self.args.pred_len)
-                pred_distribution, y_hat = self.model.inference(datax=x,
-                                                                pred_len=self.args.pred_len,
-                                                                sample_times=self.args.sample_times,
-                                                                use_sample=self.args.use_sample)
+                result = self.model.inference(datax=x,
+                                              pred_len=self.args.pred_len,
+                                              sample_times=self.args.sample_times,
+                                              use_sample=self.args.use_sample)
+                pred_distribution, y_hat = result['sample_pred_distribution'], result['sample_y_hat']
+
                 # data post process
                 abs_x, abs_y = self.model.evaluation_data_splitter(data, self.args.pred_len)
                 abs_y_hat = self.test_dataset.rel_to_abs(y_hat, start=torch.unsqueeze(abs_x[:, -1, :], dim=1))
 
             else:
                 x, y = self.model.evaluation_data_splitter(data, self.args.pred_len)
-                pred_distribution, y_hat = self.model.inference(datax=x,
-                                                                pred_len=self.args.pred_len,
-                                                                sample_times=self.args.sample_times,
-                                                                use_sample=self.args.use_sample)
+                result = self.model.inference(datax=x,
+                                              pred_len=self.args.pred_len,
+                                              sample_times=self.args.sample_times,
+                                              use_sample=self.args.use_sample)
+                pred_distribution, y_hat = result['sample_pred_distribution'], result['sample_y_hat']
+
                 abs_x = x
                 abs_y = y
                 abs_y_hat = y_hat
@@ -275,7 +279,8 @@ class Tester:
             # transform from norm data to raw data
             # previous data are in normal scale.
             norm_abs_x, norm_abs_y, norm_abs_y_hat, norm_pred_distribution = \
-                abs_x, abs_y, abs_y_hat, pred_distribution
+                abs_x.clone().detach(), abs_y.clone().detach(), \
+                abs_y_hat.clone().detach(), pred_distribution.clone().detach()
             # now, abs_? & pred_distribution are data in original scale.
             abs_x = self.test_dataset.norm_to_raw(abs_x)
             abs_y = self.test_dataset.norm_to_raw(abs_y)
