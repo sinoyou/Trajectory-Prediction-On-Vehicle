@@ -5,7 +5,7 @@ import time
 from torch import nn, optim
 import torch
 from model.utils import make_mlp, get_2d_gaussian, get_mixed, gaussian_sampler, get_loss_by_name
-from script.cuda import get_device, to_device
+from script.cuda import to_device
 
 
 class VanillaLSTM(torch.nn.Module):
@@ -88,19 +88,27 @@ class VanillaLSTM(torch.nn.Module):
         datay = batch_data[:, -pred_len:, :]
         return datax, datay
 
-    def train_step(self, x, **kwargs):
+    def train_step(self, x, y_gt, **kwargs):
         """
         Run one train step
+        :param y_gt: Groud Truth y [batch_size, pred_len, 2]
         :param vanilla: vanilla model
         :param x: [batch_size, obs_len, 2]
         :return: dict()
         """
         model_output, _ = self(x, hc=None)
         model_output = model_output[:, -kwargs['pred_len']:, :]
-        return {'model_output': model_output}
+        if self.loss == '2d_gaussian':
+            pred_distribution = get_2d_gaussian(model_output)
+        elif self.loss == 'mixed':
+            pred_distribution = get_mixed(model_output)
+        else:
+            raise Exception('Distribution undefined.')
+        loss = self.get_loss(pred_distribution, y_gt)
+        return {'model_output': model_output, 'pred_distribution': pred_distribution, 'loss': loss}
 
     def get_loss(self, distribution, y_gt):
-        return get_loss_by_name(distribution, y_gt, self.loss)
+        return get_loss_by_name(distribution=distribution, y=y_gt, name=self.loss)
 
     def inference(self, datax, pred_len, sample_times, use_sample):
         """
@@ -176,4 +184,7 @@ class VanillaLSTM(torch.nn.Module):
             else:
                 raise Exception('No inference support for {}'.format(self.loss))
 
-        return torch.cat(sample_distribution, dim=0), torch.cat(sample_location, dim=0)
+        return {
+            'sample_pred_distribution': torch.cat(sample_distribution, dim=0),
+            'sample_y_hat': torch.cat(sample_location, dim=0)
+        }
