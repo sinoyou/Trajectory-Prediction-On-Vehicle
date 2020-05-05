@@ -60,7 +60,6 @@ class Recorder:
             abs_y = trajectory['abs_y']
 
             # when using relative prediction, gaussian mux and muy should be replaced with absolute for visualization
-            # But this operation changed meaning due to the sigma_x and sigma_y are still for relative.
             if relavtive:
                 if i == 0:
                     self.logger.warning(

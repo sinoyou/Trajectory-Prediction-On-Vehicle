@@ -19,17 +19,15 @@ def make_mlp(dim_list, activation='relu', batch_norm=False, dropout=0):
     return nn.Sequential(*layers)
 
 
-def get_loss_by_name(model_output, y, name):
+def get_loss_by_name(distribution, y, name):
     """
     Calculate different types of models as name.
     :return: [..., 1]
     """
     if name == '2d_gaussian':
-        gaussian_output = get_2d_gaussian(model_output)
-        loss = neg_likelihood_gaussian_pdf(gaussian_output, y)
+        loss = neg_likelihood_gaussian_pdf(distribution, y)
     elif name == 'mixed':
-        mixed_output = get_mixed(model_output)
-        loss = neg_likelihood_mixed_pdf(mixed_output, y)
+        loss = neg_likelihood_mixed_pdf(distribution, y)
     else:
         raise Exception('No support for loss {}'.format(name))
     return loss

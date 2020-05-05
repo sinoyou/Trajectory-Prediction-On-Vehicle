@@ -3,7 +3,6 @@ import torch
 from model.utils import make_mlp, get_loss_by_name
 
 from model.utils import get_2d_gaussian, gaussian_sampler, get_mixed
-from script.cuda import to_device
 
 
 class Seq2SeqLSTM(torch.nn.Module):
@@ -109,17 +108,25 @@ class Seq2SeqLSTM(torch.nn.Module):
         """
         return batch_data[:, :-pred_len, :], batch_data[:, -pred_len:, :]
 
-    def train_step(self, x, **kwargs):
+    def train_step(self, x, y_gt, **kwargs):
         """
         Run one train step.
+        :param y_gt: ground truth y [batch_size ,pred_len, 2]
         :param x: [batch_size, obs_len, 2]
         :return: dict()
         """
         model_output = self(x)
-        return {'model_output': model_output}
+        if self.loss == '2d_gaussian':
+            pred_distribution = get_2d_gaussian(model_output)
+        elif self.loss == 'mixed':
+            pred_distribution = get_mixed(model_output)
+        else:
+            raise Exception('Distribution undefined.')
+        loss = self.get_loss(pred_distribution, y_gt)
+        return {'model_output': model_output, 'pred_distribution': pred_distribution, 'loss': loss}
 
     def get_loss(self, distribution, y_gt):
-        return get_loss_by_name(distribution, y_gt, self.loss)
+        return get_loss_by_name(distribution=distribution, y=y_gt, name=self.loss)
 
     def inference(self, datax, pred_len, sample_times, use_sample):
         """
@@ -149,39 +156,21 @@ class Seq2SeqLSTM(torch.nn.Module):
         with torch.no_grad():
             if self.loss == '2d_gaussian':
                 for _ in range(sample_times):
-                    interface_output_parser = sample_output_parser if use_sample else None
-                    model_outputs = self(datax, interface_output_parser)
+                    inference = sample_output_parser if use_sample else None
+                    model_outputs = self(datax, inference)
 
-                    gaussian_output = to_device(torch.zeros((1, pred_len, 5)), datax.device)
-                    y_hat = to_device(torch.zeros((1, pred_len, 2)), datax.device)
-
-                    for itr in range(pred_len):
-                        model_output = model_outputs[:, itr, :]
-                        gaussian_output[:, itr, :] = get_2d_gaussian(model_output=model_output)
-                        if use_sample:
-                            y_hat[0, itr, 0], y_hat[0, itr, 1] = gaussian_sampler(
-                                gaussian_output[0, itr, 0].cpu().numpy(),
-                                gaussian_output[0, itr, 1].cpu().numpy(),
-                                gaussian_output[0, itr, 2].cpu().numpy(),
-                                gaussian_output[0, itr, 3].cpu().numpy(),
-                                gaussian_output[0, itr, 4].cpu().numpy())
-                        else:
-                            y_hat[0, itr, :] = gaussian_output[:, itr, 0:2]
+                    gaussian_output = get_2d_gaussian(model_outputs)
+                    y_hat = gaussian_output[..., 0:2]
 
                     sample_distribution.append(gaussian_output)
                     sample_location.append(y_hat)
 
             elif self.loss == 'mixed':
-                interface_output_parser = None
-                model_outputs = self(datax, interface_output_parser)
-                y_hat = torch.zeros((1, pred_len, 2), device=datax.device)
+                inference = None
+                model_outputs = self(datax, inference)
 
-                mixed_output = torch.zeros((1, pred_len, 5), device=datax.device)
-                for itr in range(pred_len):
-                    model_output = model_outputs[:, itr, :]
-
-                    mixed_output[0, itr, :] = get_mixed(model_output)
-                    y_hat[0, itr, :] = mixed_output[:, itr, 0:2]
+                mixed_output = get_mixed(model_outputs)
+                y_hat = mixed_output[..., 0:2]
 
                 sample_distribution.append(mixed_output)
                 sample_location.append(y_hat)
@@ -189,4 +178,7 @@ class Seq2SeqLSTM(torch.nn.Module):
             else:
                 raise Exception('No inference support for {}'.format(self.loss))
 
-        return torch.cat(sample_distribution, dim=0), torch.cat(sample_location, dim=0)
+        return {
+            'sample_pred_distribution': torch.cat(sample_distribution, dim=0),
+            'sample_y_hat': torch.cat(sample_location, dim=0)
+        }
