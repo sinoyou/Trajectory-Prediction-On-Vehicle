@@ -96,6 +96,7 @@ class SingleKittiDataLoader:
         return {'data': batch_data, 'rel_data': rel_batch_data}
 
     def norm_to_raw(self, trajectory):
+        trajectory = trajectory.clone().detach()
         if trajectory.shape[-1] == 5:
             trajectory[..., 0] = trajectory[..., 0] * self.loc_x_std + self.loc_x_mean
             trajectory[..., 1] = trajectory[..., 1] * self.loc_z_std + self.loc_z_mean
