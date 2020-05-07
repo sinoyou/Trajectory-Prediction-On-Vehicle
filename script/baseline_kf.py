@@ -2,7 +2,6 @@ import argparse
 import sys
 
 sys.path.append('../')
-import os
 
 # os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'  # not recommended for macOS
 
@@ -11,6 +10,7 @@ from model.kf_runner import KF
 
 # args parser
 parser = argparse.ArgumentParser()
+
 
 def run_kf():
     # !!!FINE-TUNE FIRST!!!

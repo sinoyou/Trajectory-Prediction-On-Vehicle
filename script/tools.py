@@ -6,6 +6,7 @@ from tensorboardX import SummaryWriter
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 import numpy as np
+import os
 
 from script.cuda import to_device
 from script.visualization import plot_sample_trajectories, plot_gaussian_ellipse, plot_potential_zone
@@ -19,16 +20,17 @@ patch_args = {'alpha': 0.9}
 class Recorder:
     """
     Designed specially for recording multiple type logging information.
-    # 1. Plot trajectories and distribution on the board.
     """
 
-    def __init__(self):
+    def __init__(self, name='default'):
         # log info
         FORMAT = '[%(levelname)s: %(filename)s: %(lineno)4d]: %(message)s'
         logging.basicConfig(level=logging.INFO, format=FORMAT, stream=sys.stdout)
-        logging.basicConfig(level=logging.WARNING, format=FORMAT, stream=sys.stderr)
         self.logger = logging.getLogger(__name__)
-        self.writer = SummaryWriter('../runs/')
+        saved_summary_filepath = '../runs/{}/'.format(name)
+        if not os.path.exists(saved_summary_filepath):
+            os.makedirs(saved_summary_filepath)
+        self.writer = SummaryWriter(saved_summary_filepath)
 
     def plot_trajectory(self, trajectories, step, cat_point, mode, relavtive):
         """

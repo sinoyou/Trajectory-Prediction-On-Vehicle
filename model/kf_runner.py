@@ -1,23 +1,14 @@
 import numpy as np
 import torch
 import os
-import argparse
-import time
-from attrdict import AttrDict
 from tqdm import tqdm
 
 from data.dataloader import KittiDataLoader
-from script.cuda import get_device, to_device
 from model.utils import neg_likelihood_gaussian_pdf_loss, get_2d_gaussian, l2_loss, gaussian_sampler
-from model.vanilla import VanillaLSTM
-from model.seq2seq import Seq2SeqLSTM
 
 # ----
-import copy
-import json
 import numpy as np
 from filterpy.kalman import KalmanFilter
-from filterpy.common import Q_discrete_white_noise
 import matplotlib.pyplot as plt
 import matplotlib.cm as cmx
 import matplotlib.colors as colors
@@ -34,7 +25,8 @@ def makedir(saved_path):
 
 
 def pos_vel_filter_4_2(x, P, R, Q=0., dt=1.0):
-    """ Returns a KalmanFilter which implements a
+    """
+    Returns a KalmanFilter which implements a
     constant velocity model for a state [x dx].T
     """
 
@@ -144,7 +136,8 @@ def calc_LL(x_posteriors, cov, measurements, H, R):
         #        print("shape P[i] = ", cov[i].shape)
         #        print("shape R = ", R.shape)
         #  Extract covariance matrix:   cov = ((sx * sx, rho * sx * sy), (rho * sx * sy, sy * sy))
-        S = np.dot(np.dot(H, cov[i]), H.T) + R  # HPH' + R  project system uncertainty into measurement space  [[19.95024876  0.        ], [ 0.         19.9950025 ]]
+        S = np.dot(np.dot(H, cov[i]),
+                   H.T) + R  # HPH' + R  project system uncertainty into measurement space  [[19.95024876  0.        ], [ 0.         19.9950025 ]]
         # Extract mean: mean = (mux, muy)
         state_posterior_in_meas_space = np.dot(H, x_posteriors[i])  # Hx  [ 2.54367572 23.49578423]
         # distribution = multivariate_normal(mean=state_posterior_in_meas_space, cov=S)
@@ -153,17 +146,17 @@ def calc_LL(x_posteriors, cov, measurements, H, R):
     return LL
 
 
-'''
+def calc_NLL(x_next_prediction, cov_next_prediction, gt, H, R):
+    """
     calculate negative log likelihood
     x_posterior, cov: correction in t
     measurement: gt in t+1
-'''
-
-def calc_NLL(x_next_prediction, cov_next_prediction, gt, H, R):
+    """
     # assert (len(x_next_prediction) == len(cov_next_prediction) and len(cov_next_prediction) == len(gt))
     #  Extract covariance matrix:   cov = ((sx * sx, rho * sx * sy), (rho * sx * sy, sy * sy))  (2, 2)
     # size 2*4 x 4*4 x 4*2 + 2*2 = 2*2
-    S = np.dot(np.dot(H, cov_next_prediction), H.T) + R  # HPH' + R  project system uncertainty into measurement space  [cov]
+    S = np.dot(np.dot(H, cov_next_prediction),
+               H.T) + R  # HPH' + R  project system uncertainty into measurement space  [cov]
     # Extract mean: mean = (mux, muy)
     state_posterior_in_meas_space = np.dot(H, x_next_prediction)  # Hx   [mean]
     # distribution = multivariate_normal(mean=state_posterior_in_meas_space, cov=S)
@@ -173,7 +166,8 @@ def calc_NLL(x_next_prediction, cov_next_prediction, gt, H, R):
         print('--------inf--------')
     return np.array(NLL)
 
-def run_EM_on_Q_R(x0=(0., 0., 0., 0.), P=500, R=0, Q=0, dt=1.0, data=None, gt=None, obs_len=3):
+
+def run_EM_on_Q_R(x0=(0., 0., 0., 0.), P=500, R=.0, Q=.0, dt=1.0, data=None, gt=None, obs_len=3):
     # def run_EM_on_Q_R(x0=(0., 0., 0., 0., 0., 0., 0., 0.), P=500, R=0, Q=0, dt=1.0, data=None):
     # log_likelihoods = []
     for i in range(0, obs_len):
@@ -185,13 +179,14 @@ def run_EM_on_Q_R(x0=(0., 0., 0., 0.), P=500, R=0, Q=0, dt=1.0, data=None, gt=No
         #     x_posteriors, x_predictions, x_next_prediction, cov, H, R = run(x0=x0, P=P, R=R, Q=Q, dt=dt, data=data)  # -> run()
         # except:
         #     print('---exception----')
-        x_posteriors, x_predictions, x_next_prediction, cov_next_prediction, covs, H, R = run(x0=x0, P=P, R=R, Q=Q, dt=dt,
-                                                                        data=data)  # -> run()
+        x_posteriors, x_predictions, x_next_prediction, cov_next_prediction, covs, H, R = run(x0=x0, P=P, R=R, Q=Q,
+                                                                                              dt=dt,
+                                                                                              data=data)  # -> run()
 
         # log_likelihoods.append(calc_LL(x_posteriors, cov, data, H, R))  # -> calc_LL()
         log_likelihood = calc_NLL(x_next_prediction, cov_next_prediction, gt, H, R)  # -> calc_NLL()
         Q, R = m_step(x_predictions, x_posteriors, data, H)
-    return x_posteriors, x_predictions, x_next_prediction, log_likelihood   # posteriors, priors, predictors
+    return x_posteriors, x_predictions, x_next_prediction, log_likelihood  # posteriors, priors, predictors
 
 
 def get_cmap(N):
@@ -219,15 +214,15 @@ def run(x0=(0., 0., 0., 0.), P=500, R=0, Q=0, dt=1.0, data=None):
     # run the kalman filter and store the results
     x_posteriors, x_predictions, cov = [], [], []
     for z in data:  # use history k-1 to predict k -> use measurement k to update
-        kf.predict()   # Time update (prediction)
+        kf.predict()  # Time update (prediction)
         x_predictions.append(kf.x)
-        kf.update(z)   # Measurement update (correction)
+        kf.update(z)  # Measurement update (correction)
         x_posteriors.append(kf.x)
         cov.append(kf.P)  # error covariance
     kf.predict()  # add by xh, for next prediction k+1
     # x_posteriors, x_predictions, cov = np.array(x_posteriors), np.array(x_predictions), np.array(cov)
     x_posteriors, x_predictions, x_next_prediction, cov_next_prediction, covs = \
-    np.array(x_posteriors), np.array(x_predictions), np.array(kf.x), np.array(kf.P), np.array(cov)
+        np.array(x_posteriors), np.array(x_predictions), np.array(kf.x), np.array(kf.P), np.array(cov)
 
     # print("cov.shape = ", covs.shape)
 
@@ -241,6 +236,7 @@ def run(x0=(0., 0., 0., 0.), P=500, R=0, Q=0, dt=1.0, data=None):
 
     return x_posteriors, x_predictions, x_next_prediction, cov_next_prediction, covs, kf.H, kf.R
 
+
 def test_data_splitter(batch_data, pred_len):
     """
     Split data [batch_size, total_len, 2] into datax and datay in train mode
@@ -249,6 +245,7 @@ def test_data_splitter(batch_data, pred_len):
     :return: datax, datay
     """
     return batch_data[:, :-pred_len, :], batch_data[:, -pred_len:, :]
+
 
 class KF:
     def __init__(self, args, recorder):
@@ -263,12 +260,10 @@ class KF:
         # self.predict()
         self.args_check()
 
-
     def args_check(self):
         if not self.args.use_sample and self.args.sample_times > 1:
             self.recorder.logger.info('Found not using sample, but sample times > 1. Auto turned to 1.')
             self.args.sample_times = 1
-
 
     def predict_then_evaluate(self, step=1):
         self.recorder.logger.info('### Begin Evaluation {}, {} test cases in total'.format(
@@ -288,7 +283,9 @@ class KF:
             x, y = test_data_splitter(data, self.args.pred_len)
             xdata = x.detach().numpy()[0]
             ydata = y.detach().numpy()[0]
-            x_posteriors, x_predictions, x_next_prediction, loss_nll = run_EM_on_Q_R(R=10, Q=.01, P=P, data=xdata, gt=ydata, obs_len=self.args.obs_len)
+            x_posteriors, x_predictions, x_next_prediction, loss_nll = run_EM_on_Q_R(R=10, Q=.01, P=P, data=xdata,
+                                                                                     gt=ydata,
+                                                                                     obs_len=self.args.obs_len)
             # [[ 2.556394 23.507532], [ 2.622816 23.351763], [ 2.689237 23.195993]]
             # print(log_likelihoods)
 
@@ -297,9 +294,9 @@ class KF:
             loss_nll = torch.from_numpy(loss_nll).type(torch.float).to(self.device)
             y_hat = torch.from_numpy(x_next_prediction[:2]).type(torch.float).to(self.device)
 
-            abs_x = x
-            abs_y = y
-            abs_y_hat = y_hat
+            abs_x = x.detach().clone()
+            abs_y = y.detach().clone()
+            abs_y_hat = y_hat.detach().clone()
 
             # metric calculate
             loss = loss_nll
@@ -370,7 +367,8 @@ class KF:
                 temp.append(record[metric])
             self.recorder.logger.info('{} : {}'.format(metric, sum(temp) / len(temp)))
             scalars[metric] = sum(temp) / len(temp)
-        self.recorder.writer.add_scalars('{}_{}'.format(self.args.model,self.args.phase), scalars, global_step=step)  # test folder
+        self.recorder.writer.add_scalars('{}_{}'.format(self.args.model, self.args.phase), scalars,
+                                         global_step=step)  # test folder
 
         # plot
         if self.args.plot:
@@ -384,4 +382,3 @@ class KF:
             self.recorder.logger.info('Export {} Done'.format(self.args.export_path))
 
         self.recorder.logger.info('### End Evaluation')
-
