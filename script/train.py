@@ -47,6 +47,7 @@ def run():
 
     # log
     parser.add_argument('--print_every', default=1, type=int)
+    parser.add_argument('--board_name', default='default', type=str)
 
     # load and save
     parser.add_argument('--save_dir', type=str)
@@ -67,7 +68,7 @@ def run():
     # transform leave scene & val scene from string to list
     args = parser.parse_args()
 
-    recoder = Recorder()
+    recoder = Recorder(name=args.board_name)
     recoder.logger.info(args)
     train(args, recoder)
 

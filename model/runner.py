@@ -172,7 +172,8 @@ class Trainer:
             'plot': self.args.val_plot,
             'plot_mode': self.args.val_plot_mode,
             'relative': self.args.relative,
-            'export_path': None
+            'export_path': None,
+            'board_name': self.args.board_name
         })
         validator = Tester(val_dict, self.recorder)
         validator.evaluate(step=epoch)
