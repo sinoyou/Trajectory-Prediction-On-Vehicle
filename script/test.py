@@ -44,6 +44,7 @@ def test():
     recorder = Recorder(args.board_name)
     tester = Tester(args, recorder)
     tester.evaluate()
+    recorder.close()
 
 
 if __name__ == '__main__':

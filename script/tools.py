@@ -135,6 +135,9 @@ class Recorder:
 
         progress.close()
 
+    def close(self):
+        self.writer.close()
+
 
 def abs_to_rel(trajectory):
     """

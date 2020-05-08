@@ -70,9 +70,10 @@ def run():
     # transform leave scene & val scene from string to list
     args = parser.parse_args()
 
-    recoder = Recorder(name=args.board_name)
-    recoder.logger.info(args)
-    train(args, recoder)
+    recorder = Recorder(name=args.board_name)
+    recorder.logger.info(args)
+    train(args, recorder)
+    recorder.close()
 
 
 if __name__ == '__main__':

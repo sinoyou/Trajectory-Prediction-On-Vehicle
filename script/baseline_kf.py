@@ -42,6 +42,7 @@ def run_kf():
     recorder = Recorder(name=model_full_name)
     tester = KF(args, recorder)
     tester.predict_then_evaluate()
+    recorder.close()
 
 
 if __name__ == '__main__':
