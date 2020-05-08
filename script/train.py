@@ -47,6 +47,8 @@ def run():
 
     # log
     parser.add_argument('--print_every', default=1, type=int)
+    parser.add_argument('--phase', default='train', type=str)
+    parser.add_argument('--board_name', default='default', type=str)
 
     # load and save
     parser.add_argument('--save_dir', type=str)
@@ -55,6 +57,7 @@ def run():
 
     # validation arguments
     parser.add_argument('--val_dataset', type=str)
+    parser.add_argument('--val_phase', default='test', type=str)
     parser.add_argument('--val_scene', nargs='+', type=int)
     # scenes are used for validation. call in cmd like this: --val_scene 8
     parser.add_argument('--val_obs_len', type=int)
@@ -67,7 +70,7 @@ def run():
     # transform leave scene & val scene from string to list
     args = parser.parse_args()
 
-    recoder = Recorder()
+    recoder = Recorder(name=args.board_name)
     recoder.logger.info(args)
     train(args, recoder)
 

@@ -155,7 +155,7 @@ def get_2d_gaussian(model_output):
 
 def gaussian_sampler(mux, muy, sx, sy, rho):
     """
-    Use random sampler to samp;e 2D points from gaussian distribution.
+    Use random sampler to sample 2D points from gaussian distribution.
     :return: one 2D point (x, y)
     """
     # Extract mean
@@ -163,7 +163,7 @@ def gaussian_sampler(mux, muy, sx, sy, rho):
     # Extract covariance matrix
     cov = ((sx * sx, rho * sx * sy), (rho * sx * sy, sy * sy))
     # Sample a point from the multiplytivariate normal distribution
-    x = np.random.multivariate_normal(mean, cov, size=1)
+    x = np.random.multivariate_normal(mean, cov, size=1) # x.shape = (1, 2)
     return x[0][0], x[0][1]
 
 

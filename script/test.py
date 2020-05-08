@@ -30,6 +30,10 @@ def test():
     # save
     parser.add_argument('--export_path', default=None, type=str)
 
+    # log
+    parser.add_argument('--phase', default='test', type=str)
+    parser.add_argument('--board_name', default='default', type=str)
+
     # print
     parser.add_argument('--silence', default=False, type=bool, help='Silent mode, only print global average result.')
     parser.add_argument('--plot', default=False, type=bool, help='plot trajectory on the tensor board.')
@@ -37,7 +41,7 @@ def test():
 
     # transform test_scene from string to list()
     args = parser.parse_args()
-    recorder = Recorder()
+    recorder = Recorder(args.board_name)
     tester = Tester(args, recorder)
     tester.evaluate()
 

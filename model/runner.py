@@ -92,7 +92,7 @@ class Trainer:
         # pre_epoch: restore from loaded model
         for epoch in range(self.pre_epoch + 1, self.pre_epoch + self.args.num_epochs + 1):
             start_time = time.time()
-            batch_num = len(self.data_loader)
+            batch_num = len(self.data_loader)  # self.count // self.batch_size
 
             loss_list = []
             self.data_loader.reset_ptr()
@@ -121,14 +121,22 @@ class Trainer:
             end_time = time.time()
             ave_loss = np.array(loss_list).sum() / len(loss_list)
 
-            # validate
+            # validate -> validate_model
+            # save checkpoint['model'] ['optimizer'] in temp_checkpoint_val
             if epoch > 0 and epoch % self.args.validate_every == 0:
                 checkpoint['model'] = self.model.state_dict()
                 checkpoint['optimizer'] = self.optimizer.state_dict()
                 self.validate_model(epoch=epoch, checkpoint=checkpoint)
 
             # print
-            self.recorder.writer.add_scalar('train_loss', ave_loss, epoch)
+            scalars = {
+                'loss': ave_loss
+            }
+            for name, value in scalars.items():
+                self.recorder.writer.add_scalars('{}_{}_{}'.format(self.args.model, self.args.phase, name),
+                                                 tag_scalar_dict=value,
+                                                 global_step=epoch)  # train folder
+
             if epoch >= 0 and epoch % self.args.print_every == 0:
                 self.recorder.logger.info('Epoch {} / {}, Train_Loss {}, Time {}'.format(
                     epoch,
@@ -136,7 +144,7 @@ class Trainer:
                     ave_loss,
                     end_time - start_time
                 ))
-
+            # save checkpoint['model'] ['optimizer'] ['epoch'] in 'checkpoint_{}_{}_{}'.format(epoch, self.args.model, ave_loss)
             if epoch > 0 and epoch % self.args.save_every == 0:
                 checkpoint['model'] = self.model.state_dict()
                 checkpoint['optimizer'] = self.optimizer.state_dict()
@@ -172,7 +180,9 @@ class Trainer:
             'plot': self.args.val_plot,
             'plot_mode': self.args.val_plot_mode,
             'relative': self.args.relative,
-            'export_path': None
+            'export_path': None,
+            'board_name': self.args.board_name,
+            'phase': self.args.val_phase
         })
         validator = Tester(val_dict, self.recorder)
         validator.evaluate(step=epoch)
@@ -262,6 +272,7 @@ class Tester:
 
                 # data post process
                 abs_x, abs_y = self.model.evaluation_data_splitter(data, self.args.pred_len)
+                # post process relative to absolute
                 abs_y_hat = self.test_dataset.rel_to_abs(y_hat, start=torch.unsqueeze(abs_x[:, -1, :], dim=1))
 
             else:
@@ -281,16 +292,17 @@ class Tester:
             norm_abs_x, norm_abs_y, norm_abs_y_hat, norm_pred_distribution = \
                 abs_x.clone().detach(), abs_y.clone().detach(), \
                 abs_y_hat.clone().detach(), pred_distribution.clone().detach()
-            # now, abs_? & pred_distribution are data in original scale.
+
+            # transform abs_* & pred_distribution to raw scale.
             abs_x = self.test_dataset.norm_to_raw(abs_x)
             abs_y = self.test_dataset.norm_to_raw(abs_y)
             abs_y_hat = self.test_dataset.norm_to_raw(abs_y_hat)
             pred_distribution = self.test_dataset.norm_to_raw(pred_distribution)
 
             # metric calculate
-            loss = self.model.get_loss(distribution=norm_pred_distribution, y_gt=y)
-            l2 = l2_loss(y_hat, y)
-            euler = l2_loss(abs_y_hat, abs_y)
+            loss = self.model.get_loss(distribution=norm_pred_distribution, y_gt=y)  # norm scale
+            l2 = l2_loss(y_hat, y)  # norm scale
+            euler = l2_loss(abs_y_hat, abs_y)  # raw scale
 
             # average metrics calculation
             # Hint: when mode is absolute, abs_? and ? are the same, so L2 loss and destination error as well.
@@ -349,8 +361,8 @@ class Tester:
                 temp.append(record[metric])
             self.recorder.logger.info('{} : {}'.format(metric, sum(temp) / len(temp)))
             scalars[metric] = sum(temp) / len(temp)
-        self.recorder.writer.add_scalars('test', scalars, global_step=step)
-
+            self.recorder.writer.add_scalar('{}_{}_{}'.format(self.args.model, self.args.phase, metric),
+                                            scalars[metric], global_step=step)
         # plot
         if self.args.plot:
             if self.model.loss == '2d_gaussian':
