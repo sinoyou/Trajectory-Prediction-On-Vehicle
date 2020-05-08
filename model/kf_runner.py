@@ -308,10 +308,15 @@ class KF:
             abs_y = y.detach().clone()
             abs_y_hat = y_hat.detach().clone()
 
+            # norm to raw
+            abs_x = self.test_dataset.norm_to_raw(abs_x)
+            abs_y = self.test_dataset.norm_to_raw(abs_y)
+            abs_y_hat = self.test_dataset.norm_to_raw(abs_y_hat)
+
             # metric calculate
-            loss = loss_nll
-            l2 = l2_loss(y_hat, y)
-            euler = l2_loss(abs_y_hat, abs_y)
+            loss = loss_nll  # norm scale
+            l2 = l2_loss(y_hat, y)  # norm scale
+            euler = l2_loss(abs_y_hat, abs_y)  # raw scale
 
             # average metrics calculation
             # Hint: when mode is absolute, abs_? and ? are the same, so L2 loss and destination error as well.
@@ -377,8 +382,8 @@ class KF:
                 temp.append(record[metric])
             self.recorder.logger.info('{} : {}'.format(metric, sum(temp) / len(temp)))
             scalars[metric] = sum(temp) / len(temp)
-        self.recorder.writer.add_scalars('{}_{}'.format(self.args.model, self.args.phase), scalars,
-                                         global_step=step)  # test folder
+            self.recorder.writer.add_scalar('{}_{}_{}'.format(self.args.model, self.args.phase, metric),
+                                            scalars[metric], global_step=step)
 
         # plot
         if self.args.plot:

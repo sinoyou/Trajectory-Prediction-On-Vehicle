@@ -132,9 +132,11 @@ class Trainer:
             scalars = {
                 'loss': ave_loss
             }
-            self.recorder.writer.add_scalars('{}_{}'.format(self.args.model, self.args.phase),
-                                             tag_scalar_dict=scalars,
-                                             global_step=epoch)  # train folder
+            for name, value in scalars.items():
+                self.recorder.writer.add_scalars('{}_{}_{}'.format(self.args.model, self.args.phase, name),
+                                                 tag_scalar_dict=value,
+                                                 global_step=epoch)  # train folder
+
             if epoch >= 0 and epoch % self.args.print_every == 0:
                 self.recorder.logger.info('Epoch {} / {}, Train_Loss {}, Time {}'.format(
                     epoch,
@@ -290,16 +292,17 @@ class Tester:
             norm_abs_x, norm_abs_y, norm_abs_y_hat, norm_pred_distribution = \
                 abs_x.clone().detach(), abs_y.clone().detach(), \
                 abs_y_hat.clone().detach(), pred_distribution.clone().detach()
-            # now, abs_? & pred_distribution are data in original scale.
+
+            # transform abs_* & pred_distribution to raw scale.
             abs_x = self.test_dataset.norm_to_raw(abs_x)
             abs_y = self.test_dataset.norm_to_raw(abs_y)
             abs_y_hat = self.test_dataset.norm_to_raw(abs_y_hat)
             pred_distribution = self.test_dataset.norm_to_raw(pred_distribution)
 
             # metric calculate
-            loss = self.model.get_loss(distribution=norm_pred_distribution, y_gt=y)
-            l2 = l2_loss(y_hat, y)
-            euler = l2_loss(abs_y_hat, abs_y)
+            loss = self.model.get_loss(distribution=norm_pred_distribution, y_gt=y)  # norm scale
+            l2 = l2_loss(y_hat, y)  # norm scale
+            euler = l2_loss(abs_y_hat, abs_y)  # raw scale
 
             # average metrics calculation
             # Hint: when mode is absolute, abs_? and ? are the same, so L2 loss and destination error as well.
@@ -358,8 +361,8 @@ class Tester:
                 temp.append(record[metric])
             self.recorder.logger.info('{} : {}'.format(metric, sum(temp) / len(temp)))
             scalars[metric] = sum(temp) / len(temp)
-        self.recorder.writer.add_scalars('{}_{}'.format(self.args.model, self.args.phase), scalars,
-                                         global_step=step)  # test folder
+            self.recorder.writer.add_scalar('{}_{}_{}'.format(self.args.model, self.args.phase, metric),
+                                            scalars[metric], global_step=step)
         # plot
         if self.args.plot:
             if self.model.loss == '2d_gaussian':
