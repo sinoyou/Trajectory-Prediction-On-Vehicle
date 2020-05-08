@@ -129,7 +129,12 @@ class Trainer:
                 self.validate_model(epoch=epoch, checkpoint=checkpoint)
 
             # print
-            self.recorder.writer.add_scalar('train_loss', ave_loss, epoch)
+            scalars = {
+                'loss': ave_loss
+            }
+            self.recorder.writer.add_scalars('{}_{}'.format(self.args.model, self.args.phase),
+                                             tag_scalar_dict=scalars,
+                                             global_step=epoch)  # train folder
             if epoch >= 0 and epoch % self.args.print_every == 0:
                 self.recorder.logger.info('Epoch {} / {}, Train_Loss {}, Time {}'.format(
                     epoch,
@@ -174,7 +179,8 @@ class Trainer:
             'plot_mode': self.args.val_plot_mode,
             'relative': self.args.relative,
             'export_path': None,
-            'board_name': self.args.board_name
+            'board_name': self.args.board_name,
+            'phase': self.args.val_phase
         })
         validator = Tester(val_dict, self.recorder)
         validator.evaluate(step=epoch)
@@ -352,8 +358,8 @@ class Tester:
                 temp.append(record[metric])
             self.recorder.logger.info('{} : {}'.format(metric, sum(temp) / len(temp)))
             scalars[metric] = sum(temp) / len(temp)
-        self.recorder.writer.add_scalars('test', scalars, global_step=step)
-
+        self.recorder.writer.add_scalars('{}_{}'.format(self.args.model, self.args.phase), scalars,
+                                         global_step=step)  # test folder
         # plot
         if self.args.plot:
             if self.model.loss == '2d_gaussian':

@@ -27,7 +27,8 @@ def run_kf():
     parser.add_argument('--use_sample', default=False, type=bool)
 
     # dataset
-    parser.add_argument('--test_dataset', default='../data/final/kitti-test.json', type=str)
+    # parser.add_argument('--test_dataset', default='../data/final/kitti-test.json', type=str)
+    parser.add_argument('--test_dataset', default='../data/kitti-all-label02.csv', type=str)
 
     # save
     parser.add_argument('--export_path', default=None, type=str)

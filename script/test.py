@@ -30,7 +30,8 @@ def test():
     # save
     parser.add_argument('--export_path', default=None, type=str)
 
-    # loc
+    # log
+    parser.add_argument('--phase', default='test', type=str)
     parser.add_argument('--board_name', default='default', type=str)
 
     # print
