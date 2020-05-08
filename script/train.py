@@ -23,8 +23,8 @@ def run():
     parser.add_argument('--leave_scene', nargs='+', type=int)
     # scenes are leaved and don't train. call in cmd like this: --leave_scene 1 2 3 4
     parser.add_argument('--relative', default=False, type=bool, help='Use relative trajectory instead of relative')
-    parser.add_argument('--total_len', default=11, type=int, help='Total length of trajectory when forward once.')
-    parser.add_argument('--pred_len', default=1, type=int, help='Length of trajectory participated in loss calc.')
+    parser.add_argument('--total_len', default=12, type=int, help='Total length of trajectory when forward once.')
+    parser.add_argument('--pred_len', default=8, type=int, help='Length of trajectory participated in loss calc.')
 
     # model type
     parser.add_argument('--model', type=str)
@@ -38,11 +38,11 @@ def run():
     parser.add_argument('--loss', type=str, help='Supporting : 2d_gaussian, mixed')
 
     # train arguments
-    parser.add_argument('--batch_size', default=128, type=int)
-    parser.add_argument('--num_epochs', default=501, type=int)
+    parser.add_argument('--batch_size', default=64, type=int)
+    parser.add_argument('--num_epochs', default=301, type=int)
     parser.add_argument('--learning_rate', default=1e-3, type=float)
     parser.add_argument('--clip_threshold', default=1.5, type=float)
-    parser.add_argument('--validate_every', default=10, type=int)
+    parser.add_argument('--validate_every', default=30, type=int)
     parser.add_argument('--weight_decay', default=5e-5, type=float)
 
     # log
@@ -63,7 +63,7 @@ def run():
     parser.add_argument('--val_obs_len', type=int)
     parser.add_argument('--val_pred_len', type=int)
     parser.add_argument('--val_use_sample', default=False, type=bool)
-    parser.add_argument('--val_sample_times', type=int)
+    parser.add_argument('--val_sample_times', default=10, type=int)
     parser.add_argument('--val_plot', default=False, type=bool)
     parser.add_argument('--val_plot_mode', default=1, type=int)
 
