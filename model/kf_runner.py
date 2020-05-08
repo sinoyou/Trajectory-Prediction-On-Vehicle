@@ -3,7 +3,9 @@ import torch
 import os
 from tqdm import tqdm
 
-from data.dataloader import KittiDataLoader
+# from data.dataloader import KittiDataLoader
+from data.kitti_dataloader import SingleKittiDataLoader
+from model.utils import l2_loss
 
 # ----
 import numpy as np
@@ -189,8 +191,10 @@ def run_EM_on_Q_R(x0=(0., 0., 0., 0.), P=500, R=.0, Q=.0, dt=1.0, data=None, gt=
 
 
 def get_cmap(N):
-    '''Returns a function that maps each index in 0, 1, ... N-1 to a distinct
-    RGB color.'''
+    """
+    Returns a function that maps each index in 0, 1, ... N-1 to a distinct
+    RGB color.
+    """
     color_norm = colors.Normalize(vmin=0, vmax=N - 1)
     scalar_map = cmx.ScalarMappable(norm=color_norm, cmap='hsv')
 
@@ -252,10 +256,17 @@ class KF:
         self.args = args
         self.recorder = recorder
         self.device = torch.device('cpu')
-        self.test_dataset = KittiDataLoader(self.args.test_dataset,
-                                            1,  # batch_size
-                                            self.args.obs_len + self.args.pred_len,
-                                            self.device)
+        # old data loader.
+        # self.test_dataset = KittiDataLoader(self.args.test_dataset,
+        #                                     1,  # batch_size
+        #                                     self.args.obs_len + self.args.pred_len,
+        #                                     self.device)
+        self.test_dataset = SingleKittiDataLoader(file_path=self.args.test_dataset,
+                                                  batch_size=1,
+                                                  trajectory_length=self.args.obs_len + self.args.pred_len,
+                                                  device=self.device,
+                                                  leave_scene=None,
+                                                  valid_scene=None)
         # self.predict()
         self.args_check()
 
