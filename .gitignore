@@ -1,6 +1,10 @@
 # Created by .ignore support plugin (hsz.mobi)
 demo.py
 Gaussian_Mixed_EDA.ipynb
+runs/
+save/
+gaussian_mixed_test/
+.idea/
 ### Python template
 # Byte-compiled / optimized / DLL files
 __pycache__/
