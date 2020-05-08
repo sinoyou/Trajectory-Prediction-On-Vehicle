@@ -21,8 +21,8 @@ class SingleKittiDataLoader:
         self.device = device
 
         # check args
-        if leave_scene is None and valid_scene is None:
-            raise Exception('Invalid Args')
+        if leave_scene is not None and valid_scene is not None:
+            raise Exception('Invalid Args of Scenes.')
 
         # read raw data. 
         raw_data = pd.read_csv(file_path)
@@ -49,7 +49,8 @@ class SingleKittiDataLoader:
                 mask = mask | targets[i]
             raw_data = raw_data[mask]
         else:
-            raise Exception('Invalid Args')
+            print('Leave Scene and Valid Scene are both none, use full scenes instead.')
+            raw_data = raw_data
 
         self.data = self.preprocess(raw_data)
         self.count = len(self.data)
