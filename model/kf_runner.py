@@ -382,7 +382,7 @@ class KF:
                 temp.append(record[metric])
             self.recorder.logger.info('{} : {}'.format(metric, sum(temp) / len(temp)))
             scalars[metric] = sum(temp) / len(temp)
-            self.recorder.writer.add_scalar('{}_{}_{}'.format(self.args.model, self.args.phase, metric),
+            self.recorder.writer.add_scalar('{}_{}_Eval/{}'.format(self.args.model, self.args.phase, metric),
                                             scalars[metric], global_step=step)
 
         # plot
