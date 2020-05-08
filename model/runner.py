@@ -92,7 +92,7 @@ class Trainer:
         # pre_epoch: restore from loaded model
         for epoch in range(self.pre_epoch + 1, self.pre_epoch + self.args.num_epochs + 1):
             start_time = time.time()
-            batch_num = len(self.data_loader)
+            batch_num = len(self.data_loader)  # self.count // self.batch_size
 
             loss_list = []
             self.data_loader.reset_ptr()
@@ -121,7 +121,8 @@ class Trainer:
             end_time = time.time()
             ave_loss = np.array(loss_list).sum() / len(loss_list)
 
-            # validate
+            # validate -> validate_model
+            # save checkpoint['model'] ['optimizer'] in temp_checkpoint_val
             if epoch > 0 and epoch % self.args.validate_every == 0:
                 checkpoint['model'] = self.model.state_dict()
                 checkpoint['optimizer'] = self.optimizer.state_dict()
@@ -136,7 +137,7 @@ class Trainer:
                     ave_loss,
                     end_time - start_time
                 ))
-
+            # save checkpoint['model'] ['optimizer'] ['epoch'] in 'checkpoint_{}_{}_{}'.format(epoch, self.args.model, ave_loss)
             if epoch > 0 and epoch % self.args.save_every == 0:
                 checkpoint['model'] = self.model.state_dict()
                 checkpoint['optimizer'] = self.optimizer.state_dict()
@@ -263,6 +264,7 @@ class Tester:
 
                 # data post process
                 abs_x, abs_y = self.model.evaluation_data_splitter(data, self.args.pred_len)
+                # post process relative to absolute
                 abs_y_hat = self.test_dataset.rel_to_abs(y_hat, start=torch.unsqueeze(abs_x[:, -1, :], dim=1))
 
             else:

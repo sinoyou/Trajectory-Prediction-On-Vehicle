@@ -146,7 +146,7 @@ class Seq2SeqLSTM(torch.nn.Module):
 
         def sample_output_parser(x):
             """
-            Only used in inference!
+            Only used in inference
             :param x: (1, 5)
             """
             x = get_2d_gaussian(x)
