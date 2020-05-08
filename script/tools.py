@@ -22,10 +22,10 @@ class Recorder:
     Designed specially for recording multiple type logging information.
     """
 
-    def __init__(self, name='default'):
+    def __init__(self, name='default', stream=sys.stdout):
         # log info
         FORMAT = '[%(levelname)s: %(filename)s: %(lineno)4d]: %(message)s'
-        logging.basicConfig(level=logging.INFO, format=FORMAT, stream=sys.stdout)
+        logging.basicConfig(level=logging.INFO, format=FORMAT, stream=stream)
         self.logger = logging.getLogger(__name__)
         saved_summary_filepath = '../runs/{}/'.format(name)
         if not os.path.exists(saved_summary_filepath):
