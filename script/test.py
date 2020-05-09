@@ -23,6 +23,7 @@ def test():
 
     # dataset
     parser.add_argument('--test_dataset', type=str)
+    parser.add_argument('--train_leave', nargs='+', type=int)
     parser.add_argument('--test_scene', nargs='+', type=int)
     # scenes are used for validation. call in cmd like this: --test_scene 8
     parser.add_argument('--relative', default=False, type=bool)
@@ -32,7 +33,7 @@ def test():
 
     # log
     parser.add_argument('--phase', default='test', type=str)
-    parser.add_argument('--board_name', default='default', type=str)
+    parser.add_argument('--board_name', default='../runs', type=str)
 
     # print
     parser.add_argument('--silence', default=False, type=bool, help='Silent mode, only print global average result.')

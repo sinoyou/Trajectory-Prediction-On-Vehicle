@@ -26,11 +26,14 @@ class Trainer:
         self.recorder = recorder
         self.pre_epoch = 0
         self.model, self.optimizer = self.build()
-        self.data_loader = SingleKittiDataLoader(self.args.train_dataset,
-                                                 self.args.batch_size,
-                                                 self.args.total_len,
-                                                 self.device,
-                                                 leave_scene=self.args.leave_scene)
+        self.data_loader = SingleKittiDataLoader(file_path=self.args.train_dataset,
+                                                 batch_size=self.args.batch_size,
+                                                 trajectory_length=self.args.total_len,
+                                                 mode='train',
+                                                 train_leave=self.args.train_leave,
+                                                 device=self.device,
+                                                 recorder=self.recorder,
+                                                 valid_scene=None)
 
     def build(self):
         """
@@ -133,9 +136,9 @@ class Trainer:
                 'loss': ave_loss
             }
             for name, value in scalars.items():
-                self.recorder.writer.add_scalars('{}_Train/{}'.format(self.args.phase, name),
-                                                 tag_scalar_dict=value,
-                                                 global_step=epoch)  # train folder
+                self.recorder.writer.add_scalar('{}_Train/{}'.format(self.args.phase, name),
+                                                scalar_value=value,
+                                                global_step=epoch)  # train folder
 
             if epoch >= 0 and epoch % self.args.print_every == 0:
                 self.recorder.logger.info('Epoch {} / {}, Train_Loss {}, Time {}'.format(
@@ -175,6 +178,7 @@ class Trainer:
             'sample_times': self.args.val_sample_times,
             'use_sample': self.args.val_use_sample,
             'test_dataset': self.args.val_dataset,
+            'train_leave': self.args.train_leave,
             'test_scene': self.args.val_scene,
             'silence': True,
             'plot': self.args.val_plot,
@@ -194,10 +198,13 @@ class Tester:
         self.train_args = None
         self.recorder = recorder
         self.device = torch.device('cpu')
-        self.test_dataset = SingleKittiDataLoader(self.args.test_dataset,
-                                                  1,
-                                                  self.args.obs_len + self.args.pred_len,
-                                                  self.device,
+        self.test_dataset = SingleKittiDataLoader(file_path=self.args.test_dataset,
+                                                  batch_size=1,
+                                                  trajectory_length=self.args.obs_len + self.args.pred_len,
+                                                  mode='valid',
+                                                  train_leave=self.args.train_leave,
+                                                  device=self.device,
+                                                  recorder=self.recorder,
                                                   valid_scene=self.args.test_scene)
         self.model = to_device(self.restore_model().train(False), self.device)
 
@@ -274,6 +281,7 @@ class Tester:
                 abs_x, abs_y = self.model.evaluation_data_splitter(data, self.args.pred_len)
                 # post process relative to absolute
                 abs_y_hat = self.test_dataset.rel_to_abs(y_hat, start=torch.unsqueeze(abs_x[:, -1, :], dim=1))
+                loss = self.model.get_loss(distribution=pred_distribution, y_gt=y)  # norm scale
 
             else:
                 x, y = self.model.evaluation_data_splitter(data, self.args.pred_len)
@@ -286,21 +294,20 @@ class Tester:
                 abs_x = x
                 abs_y = y
                 abs_y_hat = y_hat
-
-            # transform from norm data to raw data
-            # previous data are in normal scale.
-            norm_abs_x, norm_abs_y, norm_abs_y_hat, norm_pred_distribution = \
-                abs_x.clone().detach(), abs_y.clone().detach(), \
-                abs_y_hat.clone().detach(), pred_distribution.clone().detach()
+                loss = self.model.get_loss(distribution=pred_distribution, y_gt=y)  # norm scale
 
             # transform abs_* & pred_distribution to raw scale.
-            abs_x = self.test_dataset.norm_to_raw(abs_x)
-            abs_y = self.test_dataset.norm_to_raw(abs_y)
-            abs_y_hat = self.test_dataset.norm_to_raw(abs_y_hat)
-            pred_distribution = self.test_dataset.norm_to_raw(pred_distribution)
+            # Only when used data is absolute, we need to transform it into raw scale.
+            if not self.args.relative:
+                x = self.test_dataset.norm_to_raw(x)
+                y = self.test_dataset.norm_to_raw(y)
+                y_hat = self.test_dataset.norm_to_raw(y_hat)
+                abs_x = self.test_dataset.norm_to_raw(abs_x)
+                abs_y = self.test_dataset.norm_to_raw(abs_y)
+                abs_y_hat = self.test_dataset.norm_to_raw(abs_y_hat)
+                pred_distribution = self.test_dataset.norm_to_raw(pred_distribution)
 
             # metric calculate
-            loss = self.model.get_loss(distribution=norm_pred_distribution, y_gt=y)  # norm scale
             l2 = l2_loss(y_hat, y)  # norm scale
             euler = l2_loss(abs_y_hat, abs_y)  # raw scale
 

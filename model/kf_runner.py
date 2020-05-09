@@ -264,9 +264,11 @@ class KF:
         self.test_dataset = SingleKittiDataLoader(file_path=self.args.test_dataset,
                                                   batch_size=1,
                                                   trajectory_length=self.args.obs_len + self.args.pred_len,
+                                                  mode='valid',
+                                                  train_leave=self.args.train_leave,
                                                   device=self.device,
-                                                  leave_scene=None,
-                                                  valid_scene=None)
+                                                  recorder=self.recorder,
+                                                  valid_scene=self.args.test_scene)
         # self.predict()
         self.args_check()
 

@@ -20,7 +20,7 @@ def train(args, recorder):
 def run():
     # dataset control
     parser.add_argument('--train_dataset', type=str)
-    parser.add_argument('--leave_scene', nargs='+', type=int)
+    parser.add_argument('--train_leave', nargs='+', type=int)
     # scenes are leaved and don't train. call in cmd like this: --leave_scene 1 2 3 4
     parser.add_argument('--relative', default=False, type=bool, help='Use relative trajectory instead of relative')
     parser.add_argument('--total_len', default=12, type=int, help='Total length of trajectory when forward once.')
@@ -48,7 +48,7 @@ def run():
     # log
     parser.add_argument('--print_every', default=1, type=int)
     parser.add_argument('--phase', default='train', type=str)
-    parser.add_argument('--board_name', default='default', type=str)
+    parser.add_argument('--board_name', default='../runs', type=str)
 
     # load and save
     parser.add_argument('--save_dir', type=str)
