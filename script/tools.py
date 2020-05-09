@@ -71,7 +71,7 @@ class Recorder:
                         'Notice relative data is using. If distribution is not 2d_gaussian, plot may be unexpected.')
                 abs_pred_distribution = np.zeros_like(pred_distribution)
                 abs_pred_distribution[:, 0, 0:2] = abs_y_hat[:, 0, 0:2]
-                abs_pred_distribution[:, 0, 3:5] = pred_distribution[:, 0, 3:5]
+                abs_pred_distribution[:, 0, 2:5] = pred_distribution[:, 0, 2:5]
 
                 def transform_to_parameter(mux, muy, sxsx, sysy, sxsy):
                     """
