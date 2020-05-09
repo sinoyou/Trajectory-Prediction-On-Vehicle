@@ -108,11 +108,16 @@ class SingleKittiDataLoader:
         self.batch_ptr = 0
 
     def next_batch(self):
+        """
+        For absolute data: norm scale
+        For relative data: raw scale(=norm_to_raw(norm_scale_rel_data))
+        :return: dict('data'. 'rel_data')
+        """
         batch_data = np.stack(self.data[self.batch_ptr:self.batch_ptr + self.batch_size], axis=0)
         self.batch_ptr += self.batch_size
         batch_data = torch.from_numpy(batch_data).type(torch.float).to(self.device)
         rel_batch_data = abs_to_rel(batch_data)
-        return {'data': batch_data, 'rel_data': rel_batch_data}
+        return {'data': batch_data, 'rel_data': self.norm_to_raw(rel_batch_data)}
 
     def norm_to_raw(self, trajectory):
         trajectory = trajectory.clone().detach()
