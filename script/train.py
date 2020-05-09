@@ -48,7 +48,7 @@ def run():
     # log
     parser.add_argument('--print_every', default=1, type=int)
     parser.add_argument('--phase', default='train', type=str)
-    parser.add_argument('--board_name', default='../default', type=str)
+    parser.add_argument('--board_name', default='../runs', type=str)
 
     # load and save
     parser.add_argument('--save_dir', type=str)

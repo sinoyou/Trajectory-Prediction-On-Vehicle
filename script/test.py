@@ -33,7 +33,7 @@ def test():
 
     # log
     parser.add_argument('--phase', default='test', type=str)
-    parser.add_argument('--board_name', default='../default', type=str)
+    parser.add_argument('--board_name', default='../runs', type=str)
 
     # print
     parser.add_argument('--silence', default=False, type=bool, help='Silent mode, only print global average result.')
