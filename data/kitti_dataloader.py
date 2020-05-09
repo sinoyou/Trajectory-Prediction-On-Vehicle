@@ -12,8 +12,8 @@ class SingleKittiDataLoader:
     Suitable for vanilla, seq2seq and etc which not considering social interaction in a scene. 
     """
 
-    def __init__(self, file_path, batch_size, trajectory_length, device, mode, recorder, seed=17373321,
-                 train_leave=None, valid_scene=None):
+    def __init__(self, file_path, batch_size, trajectory_length, device, mode, train_leave, recorder, seed=17373321,
+                 valid_scene=None):
         self.count = 0
         self.batch_size = batch_size
         self.seq_len = trajectory_length
@@ -77,10 +77,13 @@ class SingleKittiDataLoader:
         each unit in a list -> [trajectory_length, 2]
         """
         data = list()
+
         # norm process
-        for target in self.norm_targets:
-            filter_raw[target] = (filter_raw[target] - self.norm_metric[target + '_mean']) \
-                                 / self.norm_metric[target + '_std']
+        def norm(row):
+            for target in self.norm_targets:
+                row[target] = (row[target] - self.norm_metric[target + '_mean']) / self.norm_metric[target + '_std']
+            return row
+        filter_raw = filter_raw.apply(norm, axis=1)
 
         # take out single object sequence and slice it into seq_len.
         scenes = filter_raw['scene'].unique()
@@ -135,7 +138,8 @@ class SingleKittiDataLoader:
         for target in self.norm_targets:
             self.norm_metric[target + '_mean'] = self.train_data[target].mean()
             self.norm_metric[target + '_std'] = self.train_data[target].std()
-        self.recorder.logger.info('Norm Metric', self.norm_metric)
+        self.recorder.logger.info('Norm Metric')
+        self.recorder.logger.info(self.norm_metric)
 
     @staticmethod
     def rel_to_abs(y_hat, **kwargs):

@@ -26,11 +26,14 @@ class Trainer:
         self.recorder = recorder
         self.pre_epoch = 0
         self.model, self.optimizer = self.build()
-        self.data_loader = SingleKittiDataLoader(self.args.train_dataset,
-                                                 self.args.batch_size,
-                                                 self.args.total_len,
-                                                 self.device,
-                                                 train_leave=self.args.leave_scene)
+        self.data_loader = SingleKittiDataLoader(file_path=self.args.train_dataset,
+                                                 batch_size=self.args.batch_size,
+                                                 trajectory_length=self.args.total_len,
+                                                 mode='train',
+                                                 train_leave=self.args.train_leave,
+                                                 device=self.device,
+                                                 recorder=self.recorder,
+                                                 valid_scene=None)
 
     def build(self):
         """
@@ -133,9 +136,9 @@ class Trainer:
                 'loss': ave_loss
             }
             for name, value in scalars.items():
-                self.recorder.writer.add_scalars('{}_Train/{}'.format(self.args.phase, name),
-                                                 tag_scalar_dict=value,
-                                                 global_step=epoch)  # train folder
+                self.recorder.writer.add_scalar('{}_Train/{}'.format(self.args.phase, name),
+                                                scalar_value=value,
+                                                global_step=epoch)  # train folder
 
             if epoch >= 0 and epoch % self.args.print_every == 0:
                 self.recorder.logger.info('Epoch {} / {}, Train_Loss {}, Time {}'.format(
@@ -175,6 +178,7 @@ class Trainer:
             'sample_times': self.args.val_sample_times,
             'use_sample': self.args.val_use_sample,
             'test_dataset': self.args.val_dataset,
+            'train_leave': self.args.train_leave,
             'test_scene': self.args.val_scene,
             'silence': True,
             'plot': self.args.val_plot,
@@ -194,10 +198,13 @@ class Tester:
         self.train_args = None
         self.recorder = recorder
         self.device = torch.device('cpu')
-        self.test_dataset = SingleKittiDataLoader(self.args.test_dataset,
-                                                  1,
-                                                  self.args.obs_len + self.args.pred_len,
-                                                  self.device,
+        self.test_dataset = SingleKittiDataLoader(file_path=self.args.test_dataset,
+                                                  batch_size=1,
+                                                  trajectory_length=self.args.obs_len + self.args.pred_len,
+                                                  mode='valid',
+                                                  train_leave=self.args.train_leave,
+                                                  device=self.device,
+                                                  recorder=self.recorder,
                                                   valid_scene=self.args.test_scene)
         self.model = to_device(self.restore_model().train(False), self.device)
 

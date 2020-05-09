@@ -28,7 +28,7 @@ class Recorder:
         if filename:
             logging.basicConfig(level=logging.INFO, format=FORMAT, filename=filename)
         else:
-            logging.basicConfig(level=logging.INFO, format=FORMAT)
+            logging.basicConfig(level=logging.INFO, format=FORMAT, stream=sys.stdout)
         self.logger = logging.getLogger(__name__)
         saved_summary_filepath = '{}/'.format(name)
         if not os.path.exists(saved_summary_filepath):
