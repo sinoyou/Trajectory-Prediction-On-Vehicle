@@ -265,7 +265,7 @@ class KF:
                                                   batch_size=1,
                                                   trajectory_length=self.args.obs_len + self.args.pred_len,
                                                   device=self.device,
-                                                  leave_scene=None,
+                                                  train_leave=None,
                                                   valid_scene=None)
         # self.predict()
         self.args_check()

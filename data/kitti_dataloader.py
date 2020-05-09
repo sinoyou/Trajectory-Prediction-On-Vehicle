@@ -12,65 +12,80 @@ class SingleKittiDataLoader:
     Suitable for vanilla, seq2seq and etc which not considering social interaction in a scene. 
     """
 
-    def __init__(self, file_path, batch_size, trajectory_length, device, seed=17373321, leave_scene=None,
-                 valid_scene=None):
+    def __init__(self, file_path, batch_size, trajectory_length, device, mode, recorder, seed=17373321,
+                 train_leave=None, valid_scene=None):
         self.count = 0
         self.batch_size = batch_size
         self.seq_len = trajectory_length
         self.batch_ptr = 0
         self.device = device
-
-        # check args
-        if leave_scene is not None and valid_scene is not None:
-            raise Exception('Invalid Args of Scenes.')
+        self.mode = str.lower(mode)
+        self.recorder = recorder
 
         # read raw data. 
         raw_data = pd.read_csv(file_path)
-        self.loc_x_mean = raw_data['loc_x_mean'].unique()[0]
-        self.loc_x_std = raw_data['loc_x_std'].unique()[0]
-        self.loc_z_mean = raw_data['loc_z_mean'].unique()[0]
-        self.loc_z_std = raw_data['loc_z_std'].unique()[0]
 
-        # filter scene
-        if leave_scene:
-            # traing scene
-            print('Scenes {} are leaved.'.format(leave_scene))
-            leaves = [raw_data['scene'] == s for s in leave_scene]
+        # args check
+        assert not (self.mode == 'valid' and valid_scene is None)
+        assert self.mode in ['train', 'valid']
+
+        # get train data
+        self.recorder.logger.info('Scenes {} are left not for training.'.format(train_leave))
+        if train_leave:
+            leaves = [raw_data['scene'] == s for s in train_leave]
             mask = leaves[0]
             for i in range(1, len(leaves)):
                 mask = mask | leaves[i]
-            raw_data = raw_data[~mask]
-        elif valid_scene:
+            self.train_data = raw_data[~mask]
+        else:
+            self.train_data = raw_data
+
+        # get valid data
+        if valid_scene:
             # valid scene
-            print('Scenes {} are used for validation.'.format(valid_scene))
+            self.recorder.logger.info('Scenes {} are used for validation.'.format(valid_scene))
             targets = [raw_data['scene'] == s for s in valid_scene]
             mask = targets[0]
             for i in range(1, len(targets)):
                 mask = mask | targets[i]
-            raw_data = raw_data[mask]
+            self.valid_data = raw_data[mask]
         else:
-            print('Leave Scene and Valid Scene are both none, use full scenes instead.')
-            raw_data = raw_data
+            self.valid_data = None
 
-        self.data = self.preprocess(raw_data)
+        # get mean and std from training data.
+        self.norm_targets = ['loc_x', 'loc_y', 'loc_z']
+        self.norm_metric = dict()
+        self.get_mean_std()
+
+        if self.mode == 'train':
+            self.data = self.preprocess(self.train_data)
+        else:
+            self.data = self.preprocess(self.valid_data)
+
         self.count = len(self.data)
         random.seed(seed)
         random.shuffle(self.data, random=random.random)
 
         # print summary. 
-        print('Count = {}, Batch Size = {}, Iteration = {}, Device = {}'.format(
+        self.recorder.logger.info('Count = {}, Batch Size = {}, Iteration = {}, Device = {}'.format(
             self.count, self.batch_size, self.__len__(), self.device
         ))
 
-    def preprocess(self, raw):
+    def preprocess(self, filter_raw):
         """
         process loaded data into list with length = count
         each unit in a list -> [trajectory_length, 2]
         """
         data = list()
-        scenes = raw['scene'].unique()
+        # norm process
+        for target in self.norm_targets:
+            filter_raw[target] = (filter_raw[target] - self.norm_metric[target + '_mean']) \
+                                 / self.norm_metric[target + '_std']
+
+        # take out single object sequence and slice it into seq_len.
+        scenes = filter_raw['scene'].unique()
         for scene in scenes:
-            raw_scene = raw[raw['scene'] == scene]
+            raw_scene = filter_raw[filter_raw['scene'] == scene]
             raw_scene = raw_scene.sort_values(by='frame')
             vru_ids = raw_scene['id'].unique()
             for vru in vru_ids:
@@ -98,21 +113,29 @@ class SingleKittiDataLoader:
 
     def norm_to_raw(self, trajectory):
         trajectory = trajectory.clone().detach()
+        loc_x_mean, loc_x_std = self.norm_metric['loc_x_mean'], self.norm_metric['loc_x_std']
+        loc_z_mean, loc_z_std = self.norm_metric['loc_z_mean'], self.norm_metric['loc_z_std']
         if trajectory.shape[-1] == 5:
-            trajectory[..., 0] = trajectory[..., 0] * self.loc_x_std + self.loc_x_mean
-            trajectory[..., 1] = trajectory[..., 1] * self.loc_z_std + self.loc_z_mean
-            trajectory[..., 2] = trajectory[..., 2] * self.loc_x_std
-            trajectory[..., 3] = trajectory[..., 3] * self.loc_z_std
+            trajectory[..., 0] = trajectory[..., 0] * loc_x_std + loc_x_mean
+            trajectory[..., 1] = trajectory[..., 1] * loc_z_std + loc_z_mean
+            trajectory[..., 2] = trajectory[..., 2] * loc_x_std
+            trajectory[..., 3] = trajectory[..., 3] * loc_z_std
             return trajectory
         elif trajectory.shape[-1] == 2:
-            trajectory[..., 0] = trajectory[..., 0] * self.loc_x_std + self.loc_x_mean
-            trajectory[..., 1] = trajectory[..., 1] * self.loc_z_std + self.loc_z_mean
+            trajectory[..., 0] = trajectory[..., 0] * loc_x_std + loc_x_mean
+            trajectory[..., 1] = trajectory[..., 1] * loc_z_std + loc_z_mean
             return trajectory
         else:
             raise Exception('Not Recognized Data Shape.')
 
     def __len__(self):
         return self.count // self.batch_size
+
+    def get_mean_std(self):
+        for target in self.norm_targets:
+            self.norm_metric[target + '_mean'] = self.train_data[target].mean()
+            self.norm_metric[target + '_std'] = self.train_data[target].std()
+        self.recorder.logger.info('Norm Metric', self.norm_metric)
 
     @staticmethod
     def rel_to_abs(y_hat, **kwargs):
@@ -132,6 +155,6 @@ class SingleKittiDataLoader:
 
 if __name__ == '__main__':
     dl = SingleKittiDataLoader('kitti-all-label02.csv', batch_size=4,
-                               trajectory_length=12, device=torch.device('cpu'), leave_scene=[0])
+                               trajectory_length=12, device=torch.device('cpu'), train_leave=[0])
     x = dl.next_batch()
     print(x)

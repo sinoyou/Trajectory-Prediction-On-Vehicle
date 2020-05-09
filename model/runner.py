@@ -30,7 +30,7 @@ class Trainer:
                                                  self.args.batch_size,
                                                  self.args.total_len,
                                                  self.device,
-                                                 leave_scene=self.args.leave_scene)
+                                                 train_leave=self.args.leave_scene)
 
     def build(self):
         """
