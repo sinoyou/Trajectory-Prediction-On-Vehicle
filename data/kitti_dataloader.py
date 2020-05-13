@@ -30,8 +30,8 @@ class SingleKittiDataLoader:
         assert self.mode in ['train', 'valid']
 
         # get train data
-        self.recorder.logger.info('Scenes {} are left not for training.'.format(train_leave))
         if train_leave:
+            self.recorder.logger.info('Scenes {} are left not for training.'.format(train_leave))
             leaves = [raw_data['scene'] == s for s in train_leave]
             mask = leaves[0]
             for i in range(1, len(leaves)):

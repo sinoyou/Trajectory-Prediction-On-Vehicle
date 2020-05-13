@@ -33,10 +33,10 @@ class ArgsMaker:
             'loss': None,  # missing
             # train args
             'batch_size': 64,
-            'num_epochs': 11,
+            'num_epochs': 11,       # debug!!!
             'learning_rate': 1e-3,
             'clip_threshold': 1.5,
-            'validate_every': 3,
+            'validate_every': 3,    # debug!!!
             'weight_decay': 5e-5,
             # log
             'print_every': 1,
@@ -44,7 +44,7 @@ class ArgsMaker:
             'board_name': None,  # missing
             # load and save
             'save_dir': None,  # missing
-            'save_every': 10,
+            'save_every': 10,       # debug!!!
             'restore_dir': None,
             # validation
             'val_dataset': '../data/kitti-all-label02.csv',
