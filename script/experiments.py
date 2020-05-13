@@ -33,10 +33,10 @@ class ArgsMaker:
             'loss': None,  # missing
             # train args
             'batch_size': 64,
-            'num_epochs': 11,       # debug!!!
+            'num_epochs': 11,  # debug!!!
             'learning_rate': 1e-3,
             'clip_threshold': 1.5,
-            'validate_every': 3,    # debug!!!
+            'validate_every': 3,  # debug!!!
             'weight_decay': 5e-5,
             # log
             'print_every': 1,
@@ -44,7 +44,7 @@ class ArgsMaker:
             'board_name': None,  # missing
             # load and save
             'save_dir': None,  # missing
-            'save_every': 10,       # debug!!!
+            'save_every': 10,  # debug!!!
             'restore_dir': None,
             # validation
             'val_dataset': '../data/kitti-all-label02.csv',
@@ -213,16 +213,14 @@ if __name__ == '__main__':
     argsMaker.add_arg_rule(['train_leave', 'val_scene'], [([i], [i]) for i in [4, 13, 16, 17]], 'scene')
     argsMaker.add_arg_rule(['use_sample', 'sample_times'], [[False, 1]] + [[True, i] for i in [5, 10, 20]], 'sample')
 
-    # for item in argsMaker.making_args_candidates().items():
-    #     print(item)
-    #     log_file.logger.info(item)
     blocker = ArgsBlocker()
     blocker.add_block_rule({'loss': 'mixed', 'use_sample': True})
-    for item in argsMaker.making_args_candidates().items():
+    candidates = argsMaker.making_args_candidates().items()
+    for index, item in enumerate(candidates):
         if blocker.is_blocked(item[1]):
-            log_file.logger.info('blocked ' + str(item[0]))
+            log_file.logger.info('{}/{} blocked '.format(index, len(candidates) - 1) + str(item[0]))
         else:
-            log_file.logger.info('pass ' + str(item[0]))
+            log_file.logger.info('{}/{} pass '.format(index, len(candidates) - 1) + str(item[0]))
             task_runner = TaskRunner(prefix, item[1])
             task_runner.run(log_file)
     log_file.close()
