@@ -163,7 +163,13 @@ class SingleKittiDataLoader:
 
 
 if __name__ == '__main__':
-    dl = SingleKittiDataLoader('kitti-all-label02.csv', batch_size=4,
-                               trajectory_length=12, device=torch.device('cpu'), train_leave=[0])
+    dl = SingleKittiDataLoader(file_path='../data/kitti-all-label02.csv',
+                               batch_size=1,
+                               trajectory_length=12,
+                               device=torch.device('cpu'),
+                               mode='train',
+                               train_leave=[1],
+                               recorder=None,
+                               valid_scene=[1])
     x = dl.next_batch()
     print(x)

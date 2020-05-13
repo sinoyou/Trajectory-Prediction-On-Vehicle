@@ -15,10 +15,10 @@ class ArgsMaker:
         self.default_args = {
             # data control
             'train_dataset': '../data/kitti-all-label02.csv',
-            'leave_scene': None,  # missing
+            'train_leave': None,  # missing
             'relative': False,
             'total_len': 12,
-            'pred_len': 8,
+            'pred_len': 4,
             # model
             'model': None,  # missing
             'embedding_size': 128,
