@@ -24,7 +24,7 @@ def run():
     # scenes are leaved and don't train. call in cmd like this: --leave_scene 1 2 3 4
     parser.add_argument('--relative', default=False, type=bool, help='Use relative trajectory instead of relative')
     parser.add_argument('--total_len', default=12, type=int, help='Total length of trajectory when forward once.')
-    parser.add_argument('--pred_len', default=8, type=int, help='Length of trajectory participated in loss calc.')
+    parser.add_argument('--pred_len', default=4, type=int, help='Length of trajectory participated in loss calc.')
 
     # model type
     parser.add_argument('--model', type=str)
@@ -70,7 +70,7 @@ def run():
     # transform leave scene & val scene from string to list
     args = parser.parse_args()
 
-    recorder = Recorder(name=args.board_name)
+    recorder = Recorder(summary_path=args.board_name)
     recorder.logger.info(args)
     train(args, recorder)
     recorder.close()
