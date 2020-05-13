@@ -70,6 +70,8 @@ class SingleKittiDataLoader:
         self.recorder.logger.info('Count = {}, Batch Size = {}, Iteration = {}, Device = {}'.format(
             self.count, self.batch_size, self.__len__(), self.device
         ))
+        if self.__len__() <= 0:
+            raise Exception('No enough data for a batch size = {}'.format(self.batch_size))
 
     def preprocess(self, filter_raw):
         """

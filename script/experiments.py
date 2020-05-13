@@ -210,7 +210,7 @@ if __name__ == '__main__':
     argsMaker = ArgsMaker()
     argsMaker.add_arg_rule('model', ['seq2seq', 'vanilla'])
     argsMaker.add_arg_rule('loss', ['2d_gaussian', 'mixed'])
-    argsMaker.add_arg_rule(['train_leave', 'val_scene'], [([i], [i]) for i in [1, 2, 3, 4, 5]], 'scene')
+    argsMaker.add_arg_rule(['train_leave', 'val_scene'], [([i], [i]) for i in [4, 13, 16, 17]], 'scene')
     argsMaker.add_arg_rule(['use_sample', 'sample_times'], [[False, 1]] + [[True, i] for i in [5, 10, 20]], 'sample')
 
     # for item in argsMaker.making_args_candidates().items():
