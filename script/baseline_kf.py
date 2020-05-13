@@ -39,7 +39,7 @@ def run_kf():
     parser.add_argument('--plot_mode', default=6, type=int)
 
     args = parser.parse_args()
-    recorder = Recorder(name=model_full_name)
+    recorder = Recorder(summary_path=model_full_name)
     tester = KF(args, recorder)
     tester.predict_then_evaluate()
     recorder.close()

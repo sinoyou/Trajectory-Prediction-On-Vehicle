@@ -4,6 +4,10 @@ import os
 from script.tools import Recorder
 from model.runner import Trainer
 from attrdict import AttrDict
+import traceback
+
+save_dir_root = '../save'
+runs_dir_root = '../runs'
 
 
 class ArgsMaker:
@@ -29,10 +33,10 @@ class ArgsMaker:
             'loss': None,  # missing
             # train args
             'batch_size': 64,
-            'num_epochs': 301,
+            'num_epochs': 11,  # debug!!!
             'learning_rate': 1e-3,
             'clip_threshold': 1.5,
-            'validate_every': 30,
+            'validate_every': 3,  # debug!!!
             'weight_decay': 5e-5,
             # log
             'print_every': 1,
@@ -40,7 +44,7 @@ class ArgsMaker:
             'board_name': None,  # missing
             # load and save
             'save_dir': None,  # missing
-            'save_every': 30,
+            'save_every': 10,  # debug!!!
             'restore_dir': None,
             # validation
             'val_dataset': '../data/kitti-all-label02.csv',
@@ -164,26 +168,31 @@ class TaskRunner:
         task_attr = AttrDict(task_attr)
         self.task_attr = task_attr
         # add prefix to board_name and save_dir
-        task_attr.board_name = os.path.join('../runs', prefix, task_attr.board_name)
-        task_attr.save_dir = os.pardir.join('../save', prefix, task_attr.save_dir)
+        task_attr.board_name = os.path.join(runs_dir_root, prefix, task_attr.board_name)
+        task_attr.save_dir = os.path.join(save_dir_root, prefix, task_attr.save_dir)
         # make dir for save dir
-        if not os.path.exists(prefix):
-            os.mkdir(prefix)
+        if not os.path.exists(os.path.join(save_dir_root, prefix)):
+            os.mkdir(os.path.join(save_dir_root, prefix))
         if not os.path.exists(task_attr.save_dir):
             os.mkdir(task_attr.save_dir)
         # initial recorder and trainer
-        self.recorder = Recorder(name=task_attr.board_name, filename=os.path.join(task_attr.save_dir, 'log.txt'))
+        self.recorder = Recorder(summary_path=task_attr.board_name, logfile=True)
         self.trainer = Trainer(task_attr, self.recorder)
 
-    def run(self):
+    def run(self, global_recorder):
         try:
-            print('Task Ends Successfully. Save Dir = {}'.format(self.task_attr.save_dir))
+            self.recorder.logger.info(self.task_attr)
             self.trainer.train_model()
+
+            global_recorder.logger.info('Task Ends Successfully. Save Dir = {}'.format(self.task_attr.save_dir))
             self.recorder.logger.info('Task Ends Successfully. Save Dir = {}'.format(self.task_attr.save_dir))
-        except Exception:
-            print('Task Ends With Error, Details On Log. Save Dir = {}'.format(self.task_attr.save_dir))
-            self.recorder.logger.error('Task Ends With Error. Save Dir = {}'.format(self.task_attr.save_dir))
-            self.recorder.logger.error(Exception)
+        except Exception as _:
+            global_recorder.logger.info(
+                'Task Ends With Error, Details On Log. Save Dir = {}'.format(self.task_attr.save_dir))
+            global_recorder.logger.info(traceback.format_exc())
+
+            self.recorder.logger.info('Task Ends With Error. Save Dir = {}'.format(self.task_attr.save_dir))
+            self.recorder.logger.info(traceback.format_exc())
         self.recorder.close()
 
 
@@ -194,12 +203,24 @@ if __name__ == '__main__':
     # 3. deploy a task runner to run training.
     #    a. Use prefix to identify different batch experiments.
     #    b. All data in one batch experiment will be in stored in runs/prefix/ and save/prefix/
+    # experiment prefix
+    prefix = '0513'
+    log_file = Recorder(os.path.join(runs_dir_root, prefix), board=False, logfile=False)
+    # 添加生成参数的规则
     argsMaker = ArgsMaker()
-    argsMaker.add_arg_rule('val_sample_times', [5, 10, 20, 30], 'sample')
-    argsMaker.add_arg_rule(['leave_scene', 'val_scene'], [[8, 8], [9, 9]], 'scene')
-    for item in argsMaker.making_args_candidates().items():
-        print(item)
+    argsMaker.add_arg_rule('model', ['seq2seq', 'vanilla'])
+    argsMaker.add_arg_rule('loss', ['2d_gaussian', 'mixed'])
+    argsMaker.add_arg_rule(['train_leave', 'val_scene'], [([i], [i]) for i in [4, 13, 16, 17]], 'scene')
+    argsMaker.add_arg_rule(['use_sample', 'sample_times'], [[False, 1]] + [[True, i] for i in [5, 10, 20]], 'sample')
+
     blocker = ArgsBlocker()
-    blocker.add_block_rule({'leave_scene': 8})
-    for item in argsMaker.making_args_candidates().items():
-        print(blocker.is_blocked(item[1]))
+    blocker.add_block_rule({'loss': 'mixed', 'use_sample': True})
+    candidates = argsMaker.making_args_candidates().items()
+    for index, item in enumerate(candidates):
+        if blocker.is_blocked(item[1]):
+            log_file.logger.info('{}/{} blocked '.format(index, len(candidates) - 1) + str(item[0]))
+        else:
+            log_file.logger.info('{}/{} pass '.format(index, len(candidates) - 1) + str(item[0]))
+            task_runner = TaskRunner(prefix, item[1])
+            task_runner.run(log_file)
+    log_file.close()
