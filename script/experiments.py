@@ -6,6 +6,7 @@ from model.runner import Trainer
 from attrdict import AttrDict
 import traceback
 import tqdm
+import pandas as pd
 
 save_dir_root = '../save'
 runs_dir_root = '../runs'
@@ -176,6 +177,85 @@ class ArgsBlocker:
         return False
 
 
+class CrossValidationRecorder:
+    """
+    An tool passed into trainer and evaluator to record result.
+    Calculated reuslt will be used for cross validation.
+    """
+
+    def __init__(self):
+        self.train_records = pd.DataFrame()
+        self.eval_records = pd.DataFrame()
+
+    def add_train_record(self, record, epoch, train_leave):
+        if isinstance(train_leave, list):
+            if len(train_leave) > 1:
+                raise Exception('CV Recorder no support for multiple scenes {}'.format(train_leave))
+        record['train_leave'] = train_leave
+        record['epoch'] = epoch
+        self.train_records = self.train_records.append(pd.DataFrame(data=record, index=[0]), ignore_index=True)
+
+    def add_evaluation_result(self, record, epoch, valid_scene):
+        if isinstance(valid_scene, list):
+            if len(valid_scene) > 1:
+                raise Exception('CV Recorder no support for multiple scenes {}'.format(valid_scene))
+        record['valid_scene'] = valid_scene
+        record['epoch'] = epoch
+        self.eval_records = self.eval_records.append(pd.DataFrame(record, index=[0]), ignore_index=True)
+
+    def calc_cv_result(self, metrics, recorder, weights):
+        """
+        Calculate Cross Validation Result according to evaluate result.
+        :param metrics: list of string, names of metrics to be calculated.
+        :param recorder: SummaryWriter
+        :param weights: CrossValidation Weights
+        :return: warning message
+        """
+        warning_msg = list()
+
+        # check: missing scenes
+        scenes = self.eval_records['valid_scene'].unique()
+        no_appear_scenes = list(set(weights.keys()) - set(scenes))
+        no_appear_invalid = [scene for scene in no_appear_scenes if weights[scene] > 0]
+        if len(no_appear_invalid) > 0:
+            warning_msg.append('Scene {} never appears in data'.format(no_appear_invalid))
+
+        # calculate by metrics
+        for metric in metrics:
+            data_no_nan = self.eval_records[~self.eval_records[metric].isna()]  # get data without nan in 'metric'
+            times = data_no_nan['epoch'].unique()  # get all time steps
+            metric_result = dict()
+            for time in times:
+                data_at_time = data_no_nan[data_no_nan['epoch'] == time]
+                scene_at_time = data_at_time['valid_scene'].unique()
+                # check scene data not appeared in this metric at this time.
+                no_appear_at_time = list(set(weights.keys()) - set(scene_at_time))
+                no_appear_invalid_at_time = [scene for scene in no_appear_at_time if weights[scene] > 0]
+                if len(no_appear_invalid_at_time) > 0:
+                    warning_msg.append(
+                        'Scene {} missing in metric {} at step = {}'.format(no_appear_invalid_at_time, metric, time)
+                    )
+                exist_scene_w = [weights[scene] for scene in scene_at_time]
+                exist_w_sum = sum(exist_scene_w)
+                # iterate by row and calculate cv of metric at time
+                result = 0.0
+                for _, row in data_at_time.iterrows():
+                    result += row[metric] * weights[row['valid_scene']] / exist_w_sum
+                metric_result[time] = result
+            metric_result = sorted(metric_result.items(), key=lambda item: item[0])
+            # plot on board
+            for time, metric in metric_result:
+                recorder.writer.add_scalar('Global_CV_{}'.format(metric), metric)
+        return warning_msg
+
+    def dump(self, path_prefix):
+        """
+        Dump train_records and eval_records to path.
+        """
+        self.train_records.to_csv(path_prefix + '_cv_train.csv', index=False)
+        self.eval_records.to_csv(path_prefix + '_cv_eval.csv', index=False)
+
+
 class TaskRunner:
     """
     A runner to train/validate model. Just like running a train script.
@@ -213,13 +293,13 @@ class TaskRunner:
         # if cv is False, then transform to cross validation like format.
         else:
             scenes = [(self.task_attr.train_leave, self.task_attr.val_scene)]
-            weights = [1.0]
+            weights = {self.task_attr.val_scene: 1.0}
 
         # define global dict to record value for cross validation
-        global_rec = list()
+        cv_rec = CrossValidationRecorder()
 
         with tqdm.tqdm(len(scenes)) as tq:
-            for scene_pair, weight in zip(scenes, weights):
+            for scene_pair in scenes:
                 tq.update(1)
                 self.task_attr.train_leave = scene_pair[0]
                 self.task_attr.val_scene = scene_pair[1]
@@ -245,6 +325,16 @@ class TaskRunner:
 
 
 if __name__ == '__main__':
+    a = {'min_ade': 0.183, 'min_fde': 0.142, 'best_min_ade': 0.138}
+    b = {'min_ade': 0.183, 'min_fde': 0.142, 'best_min_fde': 0.138}
+    c = {'hallo': 123}
+    x = CrossValidationRecorder()
+    x.add_train_record(a, 100, 10)
+    x.add_train_record(b, 200, 5)
+    x.add_train_record(c, 300, 7)
+    print(x.train_records)
+    exit(0)
+
     # How to use above three class.
     # 1. use ArgsMaker to make a list of args in a batch experiment.
     # 2. use ArgsBlocker to abandon specified args by ArgsMaker.
