@@ -32,6 +32,8 @@ cross_weights = {0: 0.014705882352941176,
                  19: 0.3431372549019608,
                  20: 0.0}
 cross_scene = [0, 1, 2, 4, 5, 7, 9, 10, 11, 12, 13, 14, 15, 16, 17, 19]
+cross_metrics = ['ave_loss', 'ade', 'fde', 'min_ade', 'min_fde', 'best_ave_loss',
+                 'best_ade', 'best_fde', 'best_min_ade', 'best_min_fde']
 
 
 class ArgsMaker:
@@ -280,7 +282,6 @@ class TaskRunner:
             os.mkdir(task_attr.save_dir)
         # initial recorder and trainer
         self.recorder = Recorder(summary_path=task_attr.board_name, logfile=True)
-        self.trainer = Trainer(task_attr, self.recorder)
 
     def run(self, global_recorder, cross_validation):
         # if cv is True, then cv scenes are set
@@ -301,27 +302,38 @@ class TaskRunner:
         with tqdm.tqdm(len(scenes)) as tq:
             for scene_pair in scenes:
                 tq.update(1)
-                self.task_attr.train_leave = scene_pair[0]
-                self.task_attr.val_scene = scene_pair[1]
-                self.task_attr.phase = 'leave_{}'.format(scene_pair[0])
-                self.task_attr.val_phase = 'teston_{}'.format(scene_pair[1])
+                _task_attr = self.task_attr.copy()
+                _task_attr.train_leave = scene_pair[0]
+                _task_attr.val_scene = scene_pair[1]
+                _task_attr.phase = 'leave_{}'.format(scene_pair[0])
+                _task_attr.val_phase = 'teston_{}'.format(scene_pair[1])
+                # in cv mode, more sub dirs will be made under current save dir.
                 if cross_validation:
-                    self.task_attr.save_dir = os.path.join(self.task_attr.save_dir,
-                                                           'leave_{}_test_{}'.format(scene_pair[0], scene_pair[1]))
+                    _task_attr.save_dir = os.path.join(_task_attr.save_dir,
+                                                       'leave_{}_test_{}'.format(scene_pair[0], scene_pair[1]))
                 try:
-                    self.recorder.logger.info(self.task_attr)
-                    self.trainer.train_model()
+                    self.recorder.logger.info(_task_attr)
+                    trainer = Trainer(_task_attr, self.recorder)
+                    trainer.train_model(cv_rec)
 
-                    global_recorder.logger.info('Task Ends Successfully. Save Dir = {}'.format(self.task_attr.save_dir))
-                    self.recorder.logger.info('Task Ends Successfully. Save Dir = {}'.format(self.task_attr.save_dir))
+                    global_recorder.logger.info('Task Ends Successfully. Save Dir = {}'.format(_task_attr.save_dir))
+                    self.recorder.logger.info('Task Ends Successfully. Save Dir = {}'.format(_task_attr.save_dir))
+
                 except Exception as _:
                     global_recorder.logger.info(
-                        'Task Ends With Error, Details On Log. Save Dir = {}'.format(self.task_attr.save_dir))
+                        'Task Ends With Error, Details On Log. Save Dir = {}'.format(_task_attr.save_dir))
                     global_recorder.logger.info(traceback.format_exc())
 
-                    self.recorder.logger.info('Task Ends With Error. Save Dir = {}'.format(self.task_attr.save_dir))
+                    self.recorder.logger.info('Task Ends With Error. Save Dir = {}'.format(_task_attr.save_dir))
                     self.recorder.logger.info(traceback.format_exc())
-                self.recorder.close()
+
+            # in cv mode, cv result will be plotted and general result will be dumped as csv file.
+            if cross_validation:
+                warns = cv_rec.calc_cv_result(cross_metrics, self.recorder, cross_weights)
+                for warn in warns:
+                    global_recorder.logger.warn(warn)
+            cv_rec.dump(os.path.join(self.task_attr.save_dir, 'summary'))
+            self.recorder.close()
 
 
 if __name__ == '__main__':
