@@ -193,6 +193,7 @@ class CrossValidationRecorder:
         if isinstance(train_leave, list):
             if len(train_leave) > 1:
                 raise Exception('CV Recorder no support for multiple scenes {}'.format(train_leave))
+            train_leave = train_leave[0]
         record['train_leave'] = train_leave
         record['epoch'] = epoch
         self.train_records = self.train_records.append(pd.DataFrame(data=record, index=[0]), ignore_index=True)
@@ -201,6 +202,7 @@ class CrossValidationRecorder:
         if isinstance(valid_scene, list):
             if len(valid_scene) > 1:
                 raise Exception('CV Recorder no support for multiple scenes {}'.format(valid_scene))
+            valid_scene = valid_scene[0]
         record['valid_scene'] = valid_scene
         record['epoch'] = epoch
         self.eval_records = self.eval_records.append(pd.DataFrame(record, index=[0]), ignore_index=True)
@@ -314,7 +316,10 @@ class TaskRunner:
                 try:
                     self.recorder.logger.info(_task_attr)
                     trainer = Trainer(_task_attr, self.recorder)
-                    trainer.train_model(cv_rec)
+                    if cross_validation:
+                        trainer.train_model(cv_recorder=cv_rec)
+                    else:
+                        trainer.train_model()
 
                     global_recorder.logger.info('Task Ends Successfully. Save Dir = {}'.format(_task_attr.save_dir))
                     self.recorder.logger.info('Task Ends Successfully. Save Dir = {}'.format(_task_attr.save_dir))
@@ -332,7 +337,7 @@ class TaskRunner:
                 warns = cv_rec.calc_cv_result(cross_metrics, self.recorder, cross_weights)
                 for warn in warns:
                     global_recorder.logger.warn(warn)
-            cv_rec.dump(os.path.join(self.task_attr.save_dir, 'summary'))
+                cv_rec.dump(os.path.join(self.task_attr.save_dir, 'summary'))
             self.recorder.close()
 
 

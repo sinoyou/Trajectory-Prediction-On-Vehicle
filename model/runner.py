@@ -12,6 +12,7 @@ from script.cuda import get_device, to_device
 from model.utils import l2_loss
 from model.vanilla import VanillaLSTM
 from model.seq2seq import Seq2SeqLSTM
+from script.experiments import CrossValidationRecorder
 
 
 class Trainer:
@@ -83,7 +84,7 @@ class Trainer:
 
         return model, optimizer
 
-    def train_model(self):
+    def train_model(self, cv_recorder: CrossValidationRecorder = None):
         """
         Train model
         """
@@ -91,6 +92,7 @@ class Trainer:
         checkpoint['args'] = self.args
 
         self.recorder.logger.info(' >>> Starting training')
+        best_eval_result = dict()
 
         # pre_epoch: restore from loaded model
         for epoch in range(self.pre_epoch + 1, self.pre_epoch + self.args.num_epochs + 1):
@@ -129,7 +131,18 @@ class Trainer:
             if epoch > 0 and epoch % self.args.validate_every == 0:
                 checkpoint['model'] = self.model.state_dict()
                 checkpoint['optimizer'] = self.optimizer.state_dict()
-                self.validate_model(epoch=epoch, checkpoint=checkpoint)
+                feedback = self.validate_model(epoch=epoch, checkpoint=checkpoint)
+                # if cv_rec exist, update information
+                if cv_recorder:
+                    record = dict()
+                    for key, value in feedback['global_metrics'].items():
+                        record[key] = value
+                        if key in best_eval_result.keys():
+                            best_eval_result[key] = min(best_eval_result.get(key), value)
+                        else:
+                            best_eval_result[key] = value
+                        record['best_' + key] = best_eval_result[value]
+                    cv_recorder.add_evaluation_result(record, epoch, valid_scene=self.args.val_scene)
 
             # print
             scalars = {
@@ -147,6 +160,9 @@ class Trainer:
                     ave_loss,
                     end_time - start_time
                 ))
+                if cv_recorder:
+                    cv_recorder.add_train_record({'loss': ave_loss}, epoch, self.args.train_leave)
+
             # save checkpoint['model'] ['optimizer'] ['epoch'] in 'checkpoint_{}_{}_{}'.format(epoch, self.args.model, ave_loss)
             if epoch > 0 and epoch % self.args.save_every == 0:
                 checkpoint['model'] = self.model.state_dict()
@@ -189,7 +205,8 @@ class Trainer:
             'phase': self.args.val_phase
         })
         validator = Tester(val_dict, self.recorder)
-        validator.evaluate(step=epoch)
+        feedback = validator.evaluate(step=epoch)
+        return feedback
 
 
 class Tester:
@@ -360,16 +377,16 @@ class Tester:
 
         # globally average metrics calculation
         self.recorder.logger.info('Calculation of Global Metrics.')
-        metric_list = ['ave_loss', 'final_loss', 'first_loss', 'ave_l2', 'final_l2', 'ade', 'fde', 'min_ade', 'min_fde']
-        scalars = dict()
+        metric_list = ['ave_loss', 'ade', 'fde', 'min_ade', 'min_fde']
+        global_metrics = dict()
         for metric in metric_list:
             temp = list()
             for record in save_list:
                 temp.append(record[metric])
             self.recorder.logger.info('{} : {}'.format(metric, sum(temp) / len(temp)))
-            scalars[metric] = sum(temp) / len(temp)
+            global_metrics[metric] = sum(temp) / len(temp)
             self.recorder.writer.add_scalar('Eval_{}/{}'.format(self.args.phase, metric),
-                                            scalars[metric], global_step=step)
+                                            global_metrics[metric], global_step=step)
         # plot
         if self.args.plot:
             if self.model.loss == '2d_gaussian':
@@ -389,3 +406,5 @@ class Tester:
             self.recorder.logger.info('Export {} Done'.format(self.args.export_path))
 
         self.recorder.logger.info('### End Evaluation')
+
+        return {'global_metrics': global_metrics}
