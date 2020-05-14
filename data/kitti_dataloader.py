@@ -31,6 +31,8 @@ class SingleKittiDataLoader:
 
         # get train data
         if train_leave:
+            if isinstance(train_leave, int):
+                train_leave = [train_leave]
             self.recorder.logger.info('Scenes {} are left not for training.'.format(train_leave))
             leaves = [raw_data['scene'] == s for s in train_leave]
             mask = leaves[0]
@@ -42,6 +44,8 @@ class SingleKittiDataLoader:
 
         # get valid data
         if valid_scene:
+            if isinstance(valid_scene, int):
+                valid_scene = [valid_scene]
             # valid scene
             self.recorder.logger.info('Scenes {} are used for validation.'.format(valid_scene))
             targets = [raw_data['scene'] == s for s in valid_scene]
