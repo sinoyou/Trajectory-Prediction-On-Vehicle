@@ -136,7 +136,7 @@ class Trainer:
                 'loss': ave_loss
             }
             for name, value in scalars.items():
-                self.recorder.writer.add_scalar('{}_Train/{}'.format(self.args.phase, name),
+                self.recorder.writer.add_scalar('Train_{}/{}'.format(self.args.phase, name),
                                                 scalar_value=value,
                                                 global_step=epoch)  # train folder
 
@@ -368,7 +368,7 @@ class Tester:
                 temp.append(record[metric])
             self.recorder.logger.info('{} : {}'.format(metric, sum(temp) / len(temp)))
             scalars[metric] = sum(temp) / len(temp)
-            self.recorder.writer.add_scalar('{}_Eval/{}'.format(self.args.phase, metric),
+            self.recorder.writer.add_scalar('Eval_{}/{}'.format(self.args.phase, metric),
                                             scalars[metric], global_step=step)
         # plot
         if self.args.plot:

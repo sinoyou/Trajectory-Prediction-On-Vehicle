@@ -5,9 +5,32 @@ from script.tools import Recorder
 from model.runner import Trainer
 from attrdict import AttrDict
 import traceback
+import tqdm
 
 save_dir_root = '../save'
 runs_dir_root = '../runs'
+cross_weights = {0: 0.014705882352941176,
+                 1: 0.014705882352941176,
+                 2: 0.00980392156862745,
+                 3: 0.0,
+                 4: 0.04411764705882353,
+                 5: 0.004901960784313725,
+                 6: 0.0,
+                 7: 0.00980392156862745,
+                 8: 0.0,
+                 9: 0.004901960784313725,
+                 10: 0.014705882352941176,
+                 11: 0.024509803921568627,
+                 12: 0.00980392156862745,
+                 13: 0.24509803921568626,
+                 14: 0.00980392156862745,
+                 15: 0.0784313725490196,
+                 16: 0.11764705882352941,
+                 17: 0.05392156862745098,
+                 18: 0.0,
+                 19: 0.3431372549019608,
+                 20: 0.0}
+cross_scene = [0, 1, 2, 4, 5, 7, 9, 10, 11, 12, 13, 14, 15, 16, 17, 19]
 
 
 class ArgsMaker:
@@ -179,21 +202,46 @@ class TaskRunner:
         self.recorder = Recorder(summary_path=task_attr.board_name, logfile=True)
         self.trainer = Trainer(task_attr, self.recorder)
 
-    def run(self, global_recorder):
-        try:
-            self.recorder.logger.info(self.task_attr)
-            self.trainer.train_model()
+    def run(self, global_recorder, cross_validation):
+        # if cv is True, then cv scenes are set
+        if cross_validation:
+            if self.task_attr.train_leave or self.task_attr.val_scene:
+                raise Exception('scenes left in train or scenes for validation already defined.')
+            global_recorder.logger.info('Cross Validation Mode: scenes = {}'.format(cross_scene))
+            scenes = zip(cross_scene, cross_scene)
+            weights = cross_weights
+        # if cv is False, then transform to cross validation like format.
+        else:
+            scenes = [(self.task_attr.train_leave, self.task_attr.val_scene)]
+            weights = [1.0]
 
-            global_recorder.logger.info('Task Ends Successfully. Save Dir = {}'.format(self.task_attr.save_dir))
-            self.recorder.logger.info('Task Ends Successfully. Save Dir = {}'.format(self.task_attr.save_dir))
-        except Exception as _:
-            global_recorder.logger.info(
-                'Task Ends With Error, Details On Log. Save Dir = {}'.format(self.task_attr.save_dir))
-            global_recorder.logger.info(traceback.format_exc())
+        # define global dict to record value for cross validation
+        global_rec = list()
 
-            self.recorder.logger.info('Task Ends With Error. Save Dir = {}'.format(self.task_attr.save_dir))
-            self.recorder.logger.info(traceback.format_exc())
-        self.recorder.close()
+        with tqdm.tqdm(len(scenes)) as tq:
+            for scene_pair, weight in zip(scenes, weights):
+                tq.update(1)
+                self.task_attr.train_leave = scene_pair[0]
+                self.task_attr.val_scene = scene_pair[1]
+                self.task_attr.phase = 'leave_{}'.format(scene_pair[0])
+                self.task_attr.val_phase = 'teston_{}'.format(scene_pair[1])
+                if cross_validation:
+                    self.task_attr.save_dir = os.path.join(self.task_attr.save_dir,
+                                                           'leave_{}_test_{}'.format(scene_pair[0], scene_pair[1]))
+                try:
+                    self.recorder.logger.info(self.task_attr)
+                    self.trainer.train_model()
+
+                    global_recorder.logger.info('Task Ends Successfully. Save Dir = {}'.format(self.task_attr.save_dir))
+                    self.recorder.logger.info('Task Ends Successfully. Save Dir = {}'.format(self.task_attr.save_dir))
+                except Exception as _:
+                    global_recorder.logger.info(
+                        'Task Ends With Error, Details On Log. Save Dir = {}'.format(self.task_attr.save_dir))
+                    global_recorder.logger.info(traceback.format_exc())
+
+                    self.recorder.logger.info('Task Ends With Error. Save Dir = {}'.format(self.task_attr.save_dir))
+                    self.recorder.logger.info(traceback.format_exc())
+                self.recorder.close()
 
 
 if __name__ == '__main__':
@@ -210,7 +258,7 @@ if __name__ == '__main__':
     argsMaker = ArgsMaker()
     argsMaker.add_arg_rule('model', ['seq2seq', 'vanilla'])
     argsMaker.add_arg_rule('loss', ['2d_gaussian', 'mixed'])
-    argsMaker.add_arg_rule(['train_leave', 'val_scene'], [([i], [i]) for i in [4, 13, 16, 17]], 'scene')
+    argsMaker.add_arg_rule(['train_leave', 'val_scene'], [(i, i) for i in [4, 13, 16, 17]], 'scene')
     argsMaker.add_arg_rule(['use_sample', 'sample_times'], [[False, 1]] + [[True, i] for i in [5, 10, 20]], 'sample')
 
     blocker = ArgsBlocker()
