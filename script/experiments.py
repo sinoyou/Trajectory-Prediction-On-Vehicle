@@ -248,8 +248,8 @@ class CrossValidationRecorder:
                 metric_result[time] = result
             metric_result = sorted(metric_result.items(), key=lambda item: item[0])
             # plot on board
-            for time, metric in metric_result:
-                recorder.writer.add_scalar('Global_CV_{}'.format(metric), metric)
+            for time, value in metric_result:
+                recorder.writer.add_scalar('Global_CV_{}'.format(metric), value)
         return warning_msg
 
     def dump(self, path_prefix):
@@ -344,6 +344,7 @@ class TaskRunner:
             for warn in warns:
                 global_recorder.logger.warn(warn)
             cv_rec.dump(os.path.join(self.task_attr.save_dir, 'summary'))
+            global_recorder.logger.info('CV done for {}'.format(self.task_attr.save_dir))
         self.recorder.close()
 
 
