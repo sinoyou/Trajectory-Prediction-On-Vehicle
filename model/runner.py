@@ -12,8 +12,6 @@ from script.cuda import get_device, to_device
 from model.utils import l2_loss
 from model.vanilla import VanillaLSTM
 from model.seq2seq import Seq2SeqLSTM
-from script.experiments import CrossValidationRecorder
-
 
 class Trainer:
     def __init__(self, args: argparse.ArgumentParser(), recorder):
@@ -84,15 +82,17 @@ class Trainer:
 
         return model, optimizer
 
-    def train_model(self, cv_recorder: CrossValidationRecorder = None):
+    def train_model(self, cv_recorder=None):
         """
         Train model
         """
         checkpoint = dict()
         checkpoint['args'] = self.args
+        if not os.path.exists(self.args.save_dir):
+            os.makedirs(self.args.save_dir)
+        best_eval_result = dict()
 
         self.recorder.logger.info(' >>> Starting training')
-        best_eval_result = dict()
 
         # pre_epoch: restore from loaded model
         for epoch in range(self.pre_epoch + 1, self.pre_epoch + self.args.num_epochs + 1):
@@ -141,14 +141,14 @@ class Trainer:
                             best_eval_result[key] = min(best_eval_result.get(key), value)
                         else:
                             best_eval_result[key] = value
-                        record['best_' + key] = best_eval_result[value]
+                        record['best_' + key] = best_eval_result[key]
                     cv_recorder.add_evaluation_result(record, epoch, valid_scene=self.args.val_scene)
 
             # print
-            scalars = {
-                'loss': ave_loss
+            summary = {
+                'loss': float(ave_loss)
             }
-            for name, value in scalars.items():
+            for name, value in summary.items():
                 self.recorder.writer.add_scalar('Train_{}/{}'.format(self.args.phase, name),
                                                 scalar_value=value,
                                                 global_step=epoch)  # train folder
@@ -161,15 +161,13 @@ class Trainer:
                     end_time - start_time
                 ))
                 if cv_recorder:
-                    cv_recorder.add_train_record({'loss': ave_loss}, epoch, self.args.train_leave)
+                    cv_recorder.add_train_record(summary, epoch, self.args.train_leave)
 
             # save checkpoint['model'] ['optimizer'] ['epoch'] in 'checkpoint_{}_{}_{}'.format(epoch, self.args.model, ave_loss)
             if epoch > 0 and epoch % self.args.save_every == 0:
                 checkpoint['model'] = self.model.state_dict()
                 checkpoint['optimizer'] = self.optimizer.state_dict()
                 checkpoint['epoch'] = epoch
-                if not os.path.exists(self.args.save_dir):
-                    os.makedirs(self.args.save_dir)
                 checkpoint_path = os.path.join(self.args.save_dir,
                                                'checkpoint_{}_{}_{}'.format(epoch, self.args.model, ave_loss))
                 self.recorder.logger.info('Save {}'.format(checkpoint_path))
@@ -384,7 +382,7 @@ class Tester:
             for record in save_list:
                 temp.append(record[metric])
             self.recorder.logger.info('{} : {}'.format(metric, sum(temp) / len(temp)))
-            global_metrics[metric] = sum(temp) / len(temp)
+            global_metrics[metric] = float(sum(temp) / len(temp))
             self.recorder.writer.add_scalar('Eval_{}/{}'.format(self.args.phase, metric),
                                             global_metrics[metric], global_step=step)
         # plot
