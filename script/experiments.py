@@ -59,10 +59,10 @@ class ArgsMaker:
             'loss': None,  # missing
             # train args
             'batch_size': 64,
-            'num_epochs': 11,  # debug!!!
+            'num_epochs': 6,  # debug!!!
             'learning_rate': 1e-3,
             'clip_threshold': 1.5,
-            'validate_every': 3,  # debug!!!
+            'validate_every': 1,  # debug!!!
             'weight_decay': 5e-5,
             # log
             'print_every': 1,
@@ -205,7 +205,7 @@ class CrossValidationRecorder:
             valid_scene = valid_scene[0]
         record['valid_scene'] = valid_scene
         record['epoch'] = epoch
-        self.eval_records = self.eval_records.append(pd.DataFrame(record, index=[0]), ignore_index=True)
+        self.eval_records = self.eval_records.append(pd.DataFrame(data=record, index=[0]), ignore_index=True)
 
     def calc_cv_result(self, metrics, recorder, weights):
         """
@@ -222,7 +222,7 @@ class CrossValidationRecorder:
         no_appear_scenes = list(set(weights.keys()) - set(scenes))
         no_appear_invalid = [scene for scene in no_appear_scenes if weights[scene] > 0]
         if len(no_appear_invalid) > 0:
-            warning_msg.append('Scene {} never appears in data'.format(no_appear_invalid))
+            warning_msg.append('Scene of weight > 0 {} never appears in data'.format(no_appear_invalid))
 
         # calculate by metrics
         for metric in metrics:
@@ -342,16 +342,6 @@ class TaskRunner:
 
 
 if __name__ == '__main__':
-    a = {'min_ade': 0.183, 'min_fde': 0.142, 'best_min_ade': 0.138}
-    b = {'min_ade': 0.183, 'min_fde': 0.142, 'best_min_fde': 0.138}
-    c = {'hallo': 123}
-    x = CrossValidationRecorder()
-    x.add_train_record(a, 100, 10)
-    x.add_train_record(b, 200, 5)
-    x.add_train_record(c, 300, 7)
-    print(x.train_records)
-    exit(0)
-
     # How to use above three class.
     # 1. use ArgsMaker to make a list of args in a batch experiment.
     # 2. use ArgsBlocker to abandon specified args by ArgsMaker.
@@ -359,13 +349,12 @@ if __name__ == '__main__':
     #    a. Use prefix to identify different batch experiments.
     #    b. All data in one batch experiment will be in stored in runs/prefix/ and save/prefix/
     # experiment prefix
-    prefix = '0513'
+    prefix = '0515'
     log_file = Recorder(os.path.join(runs_dir_root, prefix), board=False, logfile=False)
     # 添加生成参数的规则
     argsMaker = ArgsMaker()
     argsMaker.add_arg_rule('model', ['seq2seq', 'vanilla'])
     argsMaker.add_arg_rule('loss', ['2d_gaussian', 'mixed'])
-    argsMaker.add_arg_rule(['train_leave', 'val_scene'], [(i, i) for i in [4, 13, 16, 17]], 'scene')
     argsMaker.add_arg_rule(['use_sample', 'sample_times'], [[False, 1]] + [[True, i] for i in [5, 10, 20]], 'sample')
 
     blocker = ArgsBlocker()
@@ -377,5 +366,5 @@ if __name__ == '__main__':
         else:
             log_file.logger.info('{}/{} pass '.format(index, len(candidates) - 1) + str(item[0]))
             task_runner = TaskRunner(prefix, item[1])
-            task_runner.run(log_file)
+            task_runner.run(log_file, cross_validation=True)
     log_file.close()
