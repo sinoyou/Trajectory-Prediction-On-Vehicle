@@ -9,7 +9,7 @@ from tqdm import tqdm
 # from data.dataloader import KittiDataLoader
 from data.kitti_dataloader import SingleKittiDataLoader
 from script.cuda import get_device, to_device
-from model.utils import l2_loss
+from model.utils import l2_loss, l1_loss
 from model.vanilla import VanillaLSTM
 from model.seq2seq import Seq2SeqLSTM
 
@@ -137,7 +137,8 @@ class Trainer:
                 self.best_eval_result = feedback['best_result']
                 # if cv_rec exist, update information
                 if cv_recorder:
-                    cv_recorder.add_evaluation_result(feedback['global_metrics'], epoch, valid_scene=self.args.val_scene)
+                    cv_recorder.add_evaluation_result(feedback['global_metrics'], epoch,
+                                                      valid_scene=self.args.val_scene)
 
             # print
             summary = {
@@ -322,6 +323,8 @@ class Tester:
             # metric calculate
             l2 = l2_loss(y_hat, y)  # norm scale
             euler = l2_loss(abs_y_hat, abs_y)  # raw scale
+            l1_x = l1_loss(torch.unsqueeze(abs_y_hat[..., 0], dim=2), torch.unsqueeze(abs_y[..., 0], dim=2))
+            l1_y = l1_loss(torch.unsqueeze(abs_y_hat[..., 1], dim=2), torch.unsqueeze(abs_y[..., 1], dim=2))
 
             # average metrics calculation
             # Hint: when mode is absolute, abs_? and ? are the same, so L2 loss and destination error as well.
@@ -334,9 +337,17 @@ class Tester:
             fde = torch.sum(euler[:, -1, :]) / self.args.sample_times
             min_ade = torch.min(torch.sum(euler, dim=[1, 2]) / self.args.pred_len)
             min_fde = torch.min(euler[:, -1, :])
+            ade_x = torch.sum(l1_x) / (self.args.pred_len * self.args.sample_times)
+            ade_y = torch.sum(l1_y) / (self.args.pred_len * self.args.sample_times)
+            fde_x = torch.sum(l1_x[:, -1, :]) / self.args.sample_times
+            fde_y = torch.sum(l1_y[:, -1, :]) / self.args.sample_times
+            min_ade_x = torch.min(torch.sum(l1_x, dim=[1, 2]) / self.args.pred_len)
+            min_ade_y = torch.min(torch.sum(l1_y, dim=[1, 2]) / self.args.pred_len)
+            min_fde_x = torch.min(l1_x[:, -1, :])
+            min_fde_y = torch.min(l1_y[:, -1, :])
 
-            msg1 = '{}_AveLoss_{:.3}_AveL2_{:.3}_FinalL2_{:.3}'.format(
-                t, ave_loss, ave_l2, final_l2)
+            msg1 = '{}_AveLoss_{:.3}_adex_{:.3}_adey_{:.3}_fdex_{:.3}_fdey_{:.3}'.format(
+                t, ave_loss, ade_x, ade_y, fde_x, fde_y)
             msg2 = '{}_Ade_{:.3}_Fde_{:.3}_MAde_{:.3f}_MFde_{:.3f}'.format(
                 t, ade, fde, min_ade, min_fde)
             if not self.args.silence:
@@ -365,6 +376,14 @@ class Tester:
             record['fde'] = fde.cpu().numpy()
             record['min_ade'] = min_ade.cpu().numpy()
             record['min_fde'] = min_fde.cpu().numpy()
+            record['ade_x'] = ade_x.cpu().numpy()
+            record['ade_y'] = ade_y.cpu().numpy()
+            record['fde_x'] = fde_x.cpu().numpy()
+            record['fde_y'] = fde_y.cpu().numpy()
+            record['min_ade_x'] = min_ade_x.cpu().numpy()
+            record['min_ade_y'] = min_ade_y.cpu().numpy()
+            record['min_fde_x'] = min_fde_x.cpu().numpy()
+            record['min_fde_y'] = min_fde_y.cpu().numpy()
 
             save_list.append(record)
 
@@ -372,7 +391,8 @@ class Tester:
 
         # globally average metrics calculation
         self.recorder.logger.info('Calculation of Global Metrics.')
-        metric_list = ['ave_loss', 'ade', 'fde', 'min_ade', 'min_fde']
+        metric_list = ['ave_loss', 'ade', 'fde', 'ade_x', 'ade_y', 'fde_x', 'fde_y',
+                       'min_ade', 'min_fde', 'min_ade_x', 'min_ade_y', 'min_fde_x', 'min_fde_y']
         global_metrics = dict()
         for metric in metric_list:
             temp = list()
