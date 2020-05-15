@@ -22,7 +22,13 @@ class Recorder:
     Designed specially for recording multiple type logging information.
     """
 
-    def __init__(self, summary_path='default', board=True, logfile=False):
+    def __init__(self, summary_path='default', board=True, logfile=True, stream=True):
+        """
+        :param summary_path: path for saving summary and log file.
+        :param board: T/F, if need summary writer.
+        :param logfile: T/F, if need to generate log file.
+        :param stream: T/F, if need to show
+        """
         saved_summary_filepath = '{}/'.format(summary_path)
         if not os.path.exists(saved_summary_filepath):
             os.makedirs(saved_summary_filepath)
@@ -35,15 +41,20 @@ class Recorder:
         FORMAT = '[%(levelname)s %(asctime)s: %(filename)s: %(lineno)4d]: %(message)s'
         datefmt = '[%Y-%m-%d %H:%M:%S]'
         self.logger = logging.getLogger(name=saved_summary_filepath)
-        if logfile:
-            handler = logging.FileHandler(filename=os.path.join(saved_summary_filepath, 'runner.log'))
-        else:
-            handler = logging.StreamHandler(stream=sys.stdout)
+        file_handler = logging.FileHandler(filename=os.path.join(saved_summary_filepath, 'runner.log'))
+        stream_handler = logging.StreamHandler(stream=sys.stdout)
+
         formatter = logging.Formatter(FORMAT, datefmt)
-        handler.setLevel(logging.INFO)
-        handler.setFormatter(formatter)
-        self.logger.addHandler(handler)
+        file_handler.setLevel(logging.INFO)
+        file_handler.setFormatter(formatter)
+        stream_handler.setLevel(logging.INFO)
+        stream_handler.setFormatter(formatter)
+
         self.logger.setLevel(logging.INFO)
+        if stream:
+            self.logger.addHandler(stream_handler)
+        if logfile:
+            self.logger.addHandler(file_handler)
 
     def plot_trajectory(self, trajectories, step, cat_point, mode, relavtive):
         """

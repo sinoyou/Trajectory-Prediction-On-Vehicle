@@ -287,7 +287,7 @@ class TaskRunner:
         if not os.path.exists(task_attr.save_dir):
             os.mkdir(task_attr.save_dir)
         # initial recorder and trainer
-        self.recorder = Recorder(summary_path=task_attr.board_name, logfile=True)
+        self.recorder = Recorder(summary_path=task_attr.board_name, logfile=True, stream=False)
 
     def run(self, global_recorder, cross_validation):
         # if cv is True, then cv scenes are set
@@ -359,7 +359,7 @@ if __name__ == '__main__':
     #    b. All data in one batch experiment will be in stored in runs/prefix/ and save/prefix/
     # experiment prefix
     prefix = '0515'
-    log_file = Recorder(os.path.join(runs_dir_root, prefix), board=False, logfile=False)
+    log_file = Recorder(os.path.join(runs_dir_root, prefix), board=False, logfile=True, stream=True)
     # 添加生成参数的规则
     argsMaker = ArgsMaker()
     argsMaker.add_arg_rule('model', ['seq2seq', 'vanilla'])
