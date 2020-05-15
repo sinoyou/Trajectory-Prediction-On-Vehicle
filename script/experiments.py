@@ -34,7 +34,8 @@ cross_weights = {0: 0.014705882352941176,
 cross_scene = [0, 1, 2, 4, 5, 7, 9, 10, 11, 12, 13, 14, 15, 16, 17, 19]
 # cross_scene = [0, 1, 13, 16, 19]
 cross_metrics = ['ave_loss', 'ade', 'fde', 'min_ade', 'min_fde', 'best_ave_loss',
-                 'best_ade', 'best_fde', 'best_min_ade', 'best_min_fde']
+                 'best_ade', 'best_fde', 'best_min_ade', 'best_min_fde',
+                 'ade_x', 'ade_y', 'fde_x', 'fde_y', 'min_ade_x', 'min_ade_y', 'min_fde_x', 'min_fde_y']
 
 
 class ArgsMaker:
