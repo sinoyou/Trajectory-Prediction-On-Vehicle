@@ -30,7 +30,9 @@ class SingleKittiDataLoader:
         assert self.mode in ['train', 'valid']
 
         # get train data
-        if train_leave:
+        if train_leave is not None:
+            if isinstance(train_leave, int):
+                train_leave = [train_leave]
             self.recorder.logger.info('Scenes {} are left not for training.'.format(train_leave))
             leaves = [raw_data['scene'] == s for s in train_leave]
             mask = leaves[0]
@@ -41,7 +43,9 @@ class SingleKittiDataLoader:
             self.train_data = raw_data
 
         # get valid data
-        if valid_scene:
+        if valid_scene is not None:
+            if isinstance(valid_scene, int):
+                valid_scene = [valid_scene]
             # valid scene
             self.recorder.logger.info('Scenes {} are used for validation.'.format(valid_scene))
             targets = [raw_data['scene'] == s for s in valid_scene]
@@ -85,6 +89,7 @@ class SingleKittiDataLoader:
             for target in self.norm_targets:
                 row[target] = (row[target] - self.norm_metric[target + '_mean']) / self.norm_metric[target + '_std']
             return row
+
         filter_raw = filter_raw.apply(norm, axis=1)
 
         # take out single object sequence and slice it into seq_len.

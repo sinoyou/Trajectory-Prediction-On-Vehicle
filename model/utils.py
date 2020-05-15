@@ -37,12 +37,23 @@ def l2_loss(pred_traj, pred_traj_gt):
     """
     Input:
     - pred_traj: Tensor of shape (batch, seq_len, 2). Predicted trajectory.
-    - pred_traj_gt: Tensor of shape (1/batch, seq_len, 2). Ground truth predictions.
+    - pred_traj_gt: Tensor of shape (batch, seq_len, 2). Ground truth predictions.
     Output:
     - loss: l2 loss [batch, seq_len, 1]
     """
     loss = (pred_traj_gt - pred_traj) ** 2
     return torch.sqrt(torch.sum(loss, dim=2, keepdim=True))
+
+
+def l1_loss(pred_traj, pred_traj_gt):
+    """
+    Input:
+    :param pred_traj: Tensor of shape (batch, seq_len, 1)/(batch, seq_len). Predicted trajectory along one dimension.
+    :param pred_traj_gt: Tensor of shape (batch, seq_len, 1)/(batch, seq_len).
+                         Groud truth predictions along one dimension.
+    :return: l1 loss |pred_traj - pred_traj_gt|
+    """
+    return torch.abs(pred_traj - pred_traj_gt)
 
 
 def neg_likelihood_gaussian_pdf(gaussian_output, target):
@@ -163,7 +174,7 @@ def gaussian_sampler(mux, muy, sx, sy, rho):
     # Extract covariance matrix
     cov = ((sx * sx, rho * sx * sy), (rho * sx * sy, sy * sy))
     # Sample a point from the multiplytivariate normal distribution
-    x = np.random.multivariate_normal(mean, cov, size=1) # x.shape = (1, 2)
+    x = np.random.multivariate_normal(mean, cov, size=1)  # x.shape = (1, 2)
     return x[0][0], x[0][1]
 
 

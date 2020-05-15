@@ -5,9 +5,36 @@ from script.tools import Recorder
 from model.runner import Trainer
 from attrdict import AttrDict
 import traceback
+import tqdm
+import pandas as pd
 
 save_dir_root = '../save'
 runs_dir_root = '../runs'
+cross_weights = {0: 0.014705882352941176,
+                 1: 0.014705882352941176,
+                 2: 0.00980392156862745,
+                 3: 0.0,
+                 4: 0.04411764705882353,
+                 5: 0.004901960784313725,
+                 6: 0.0,
+                 7: 0.00980392156862745,
+                 8: 0.0,
+                 9: 0.004901960784313725,
+                 10: 0.014705882352941176,
+                 11: 0.024509803921568627,
+                 12: 0.00980392156862745,
+                 13: 0.24509803921568626,
+                 14: 0.00980392156862745,
+                 15: 0.0784313725490196,
+                 16: 0.11764705882352941,
+                 17: 0.05392156862745098,
+                 18: 0.0,
+                 19: 0.3431372549019608,
+                 20: 0.0}
+cross_scene = [0, 1, 2, 4, 5, 7, 9, 10, 11, 12, 13, 14, 15, 16, 17, 19]
+# cross_scene = [0, 1, 13, 16, 19]
+cross_metrics = ['ave_loss', 'ade', 'fde', 'min_ade', 'min_fde', 'best_ave_loss',
+                 'best_ade', 'best_fde', 'best_min_ade', 'best_min_fde']
 
 
 class ArgsMaker:
@@ -36,7 +63,7 @@ class ArgsMaker:
             'num_epochs': 11,  # debug!!!
             'learning_rate': 1e-3,
             'clip_threshold': 1.5,
-            'validate_every': 3,  # debug!!!
+            'validate_every': 2,  # debug!!!
             'weight_decay': 5e-5,
             # log
             'print_every': 1,
@@ -153,6 +180,87 @@ class ArgsBlocker:
         return False
 
 
+class CrossValidationRecorder:
+    """
+    An tool passed into trainer and evaluator to record result.
+    Calculated reuslt will be used for cross validation.
+    """
+
+    def __init__(self):
+        self.train_records = pd.DataFrame()
+        self.eval_records = pd.DataFrame()
+
+    def add_train_record(self, record, epoch, train_leave):
+        if isinstance(train_leave, list):
+            if len(train_leave) > 1:
+                raise Exception('CV Recorder no support for multiple scenes {}'.format(train_leave))
+            train_leave = train_leave[0]
+        record['train_leave'] = train_leave
+        record['epoch'] = epoch
+        self.train_records = self.train_records.append(pd.DataFrame(data=record, index=[0]), ignore_index=True)
+
+    def add_evaluation_result(self, record, epoch, valid_scene):
+        if isinstance(valid_scene, list):
+            if len(valid_scene) > 1:
+                raise Exception('CV Recorder no support for multiple scenes {}'.format(valid_scene))
+            valid_scene = valid_scene[0]
+        record['valid_scene'] = valid_scene
+        record['epoch'] = epoch
+        self.eval_records = self.eval_records.append(pd.DataFrame(data=record, index=[0]), ignore_index=True)
+
+    def calc_cv_result(self, metrics, recorder, weights):
+        """
+        Calculate Cross Validation Result according to evaluate result.
+        :param metrics: list of string, names of metrics to be calculated.
+        :param recorder: SummaryWriter
+        :param weights: CrossValidation Weights
+        :return: warning message
+        """
+        warning_msg = list()
+
+        # check: missing scenes
+        scenes = self.eval_records['valid_scene'].unique()
+        no_appear_scenes = list(set(weights.keys()) - set(scenes))
+        no_appear_invalid = [scene for scene in no_appear_scenes if weights[scene] > 0]
+        if len(no_appear_invalid) > 0:
+            warning_msg.append('Scene of weight > 0 {} never appears in data'.format(no_appear_invalid))
+
+        # calculate by metrics
+        for metric in metrics:
+            data_no_nan = self.eval_records[~self.eval_records[metric].isna()]  # get data without nan in 'metric'
+            times = data_no_nan['epoch'].unique()  # get all time steps
+            metric_result = dict()
+            for time in times:
+                data_at_time = data_no_nan[data_no_nan['epoch'] == time]
+                scene_at_time = data_at_time['valid_scene'].unique()
+                # check scene data not appeared in this metric at this time.
+                no_appear_at_time = list(set(scenes) - set(scene_at_time))
+                no_appear_invalid_at_time = [scene for scene in no_appear_at_time if weights[scene] > 0]
+                if len(no_appear_invalid_at_time) > 0:
+                    warning_msg.append(
+                        'Scene {} missing in metric = {} at step = {}'.format(no_appear_invalid_at_time, metric, time)
+                    )
+                exist_scene_w = [weights[scene] for scene in scene_at_time]
+                exist_w_sum = sum(exist_scene_w)
+                # iterate by row and calculate cv of metric at time
+                result = 0.0
+                for _, row in data_at_time.iterrows():
+                    result += row[metric] * weights[row['valid_scene']] / exist_w_sum
+                metric_result[time] = result
+            metric_result = sorted(metric_result.items(), key=lambda item: item[0])
+            # plot on board
+            for time, value in metric_result:
+                recorder.writer.add_scalar('CV_{}'.format(metric), scalar_value=value, global_step=time)
+        return warning_msg
+
+    def dump(self, path_prefix):
+        """
+        Dump train_records and eval_records to path.
+        """
+        self.train_records.to_csv(path_prefix + '_cv_train.csv', index=False)
+        self.eval_records.to_csv(path_prefix + '_cv_eval.csv', index=False)
+
+
 class TaskRunner:
     """
     A runner to train/validate model. Just like running a train script.
@@ -171,28 +279,73 @@ class TaskRunner:
         task_attr.board_name = os.path.join(runs_dir_root, prefix, task_attr.board_name)
         task_attr.save_dir = os.path.join(save_dir_root, prefix, task_attr.save_dir)
         # make dir for save dir
+        if not os.path.exists(save_dir_root):
+            os.mkdir(save_dir_root)
         if not os.path.exists(os.path.join(save_dir_root, prefix)):
             os.mkdir(os.path.join(save_dir_root, prefix))
         if not os.path.exists(task_attr.save_dir):
             os.mkdir(task_attr.save_dir)
         # initial recorder and trainer
         self.recorder = Recorder(summary_path=task_attr.board_name, logfile=True)
-        self.trainer = Trainer(task_attr, self.recorder)
 
-    def run(self, global_recorder):
-        try:
-            self.recorder.logger.info(self.task_attr)
-            self.trainer.train_model()
+    def run(self, global_recorder, cross_validation):
+        # if cv is True, then cv scenes are set
+        if cross_validation:
+            if self.task_attr.train_leave or self.task_attr.val_scene:
+                raise Exception('scenes left in train or scenes for validation already defined.')
+            global_recorder.logger.info('Cross Validation Mode: scenes = {}'.format(cross_scene))
+            scenes = [(s, s) for s in cross_scene]
+            weights = cross_weights
+        # if cv is False, then transform to cross validation like format.
+        else:
+            scenes = [(self.task_attr.train_leave, self.task_attr.val_scene)]
+            weights = {self.task_attr.val_scene: 1.0}
 
-            global_recorder.logger.info('Task Ends Successfully. Save Dir = {}'.format(self.task_attr.save_dir))
-            self.recorder.logger.info('Task Ends Successfully. Save Dir = {}'.format(self.task_attr.save_dir))
-        except Exception as _:
-            global_recorder.logger.info(
-                'Task Ends With Error, Details On Log. Save Dir = {}'.format(self.task_attr.save_dir))
-            global_recorder.logger.info(traceback.format_exc())
+        # define global dict to record value for cross validation
+        cv_rec = CrossValidationRecorder()
 
-            self.recorder.logger.info('Task Ends With Error. Save Dir = {}'.format(self.task_attr.save_dir))
-            self.recorder.logger.info(traceback.format_exc())
+        for scene_pair in scenes:
+            _task_attr = AttrDict(self.task_attr.copy())
+            _task_attr.train_leave = scene_pair[0]
+            _task_attr.val_scene = scene_pair[1]
+            _task_attr.phase = 'leave_{}'.format(scene_pair[0])
+            _task_attr.val_phase = 'teston_{}'.format(scene_pair[1])
+            # in cv mode, more sub dirs will be made under current save dir.
+            if cross_validation:
+                _task_attr.save_dir = os.path.join(_task_attr.save_dir,
+                                                   'leave_{}_test_{}'.format(scene_pair[0], scene_pair[1]))
+            try:
+                self.recorder.logger.info(_task_attr)
+                trainer = Trainer(_task_attr, self.recorder)
+                if cross_validation:
+                    global_recorder.logger.info('CV Running @ leave {} and val {}. Save @ {}, Runs+Log @ {}'.format(
+                        _task_attr.train_leave, _task_attr.val_scene, _task_attr.save_dir, _task_attr.board_name
+                    ))
+                    trainer.train_model(cv_recorder=cv_rec)
+                else:
+                    global_recorder.logger.info('Normal Running @ leave {} and val {}. Save @ {}, Runs+Log @ {}'.format(
+                        _task_attr.train_leave, _task_attr.val_scene, _task_attr.save_dir, _task_attr.board_name
+                    ))
+                    trainer.train_model()
+
+                global_recorder.logger.info('Task Ends Successfully. Save Dir = {}'.format(_task_attr.save_dir))
+                self.recorder.logger.info('Task Ends Successfully. Save Dir = {} \n\n\n'.format(_task_attr.save_dir))
+
+            except Exception as _:
+                global_recorder.logger.info(
+                    'Task Ends With Error, Details On Log in runs. Save Dir = {}'.format(_task_attr.save_dir))
+                global_recorder.logger.info(traceback.format_exc())
+
+                self.recorder.logger.info('Task Ends With Error. Save Dir = {} \n\n\n'.format(_task_attr.save_dir))
+                self.recorder.logger.info(traceback.format_exc())
+
+        # in cv mode, cv result will be plotted and general result will be dumped as csv file.
+        if cross_validation:
+            warns = cv_rec.calc_cv_result(cross_metrics, self.recorder, cross_weights)
+            for warn in warns:
+                global_recorder.logger.warn(warn)
+            cv_rec.dump(os.path.join(self.task_attr.save_dir, 'summary'))
+            global_recorder.logger.info('CV done for {}'.format(self.task_attr.save_dir))
         self.recorder.close()
 
 
@@ -204,23 +357,22 @@ if __name__ == '__main__':
     #    a. Use prefix to identify different batch experiments.
     #    b. All data in one batch experiment will be in stored in runs/prefix/ and save/prefix/
     # experiment prefix
-    prefix = '0513'
+    prefix = '0515'
     log_file = Recorder(os.path.join(runs_dir_root, prefix), board=False, logfile=False)
     # 添加生成参数的规则
     argsMaker = ArgsMaker()
     argsMaker.add_arg_rule('model', ['seq2seq', 'vanilla'])
     argsMaker.add_arg_rule('loss', ['2d_gaussian', 'mixed'])
-    argsMaker.add_arg_rule(['train_leave', 'val_scene'], [([i], [i]) for i in [4, 13, 16, 17]], 'scene')
-    argsMaker.add_arg_rule(['use_sample', 'sample_times'], [[False, 1]] + [[True, i] for i in [5, 10, 20]], 'sample')
+    # argsMaker.add_arg_rule(['val_use_sample', 'sample_times'], [[False, 1]] + [[True, i] for i in [5, 10, 20]], 'sample')
 
     blocker = ArgsBlocker()
-    blocker.add_block_rule({'loss': 'mixed', 'use_sample': True})
+    blocker.add_block_rule({'loss': 'mixed', 'val_use_sample': True})
     candidates = argsMaker.making_args_candidates().items()
     for index, item in enumerate(candidates):
         if blocker.is_blocked(item[1]):
-            log_file.logger.info('{}/{} blocked '.format(index, len(candidates) - 1) + str(item[0]))
+            log_file.logger.info('{}/{} blocked '.format(index + 1, len(candidates)) + str(item[0]))
         else:
-            log_file.logger.info('{}/{} pass '.format(index, len(candidates) - 1) + str(item[0]))
+            log_file.logger.info('{}/{} pass '.format(index + 1, len(candidates)) + str(item[0]))
             task_runner = TaskRunner(prefix, item[1])
-            task_runner.run(log_file)
+            task_runner.run(log_file, cross_validation=True)
     log_file.close()

@@ -9,7 +9,7 @@ from tqdm import tqdm
 # from data.dataloader import KittiDataLoader
 from data.kitti_dataloader import SingleKittiDataLoader
 from script.cuda import get_device, to_device
-from model.utils import l2_loss
+from model.utils import l2_loss, l1_loss
 from model.vanilla import VanillaLSTM
 from model.seq2seq import Seq2SeqLSTM
 
@@ -25,6 +25,7 @@ class Trainer:
         self.device = get_device()
         self.recorder = recorder
         self.pre_epoch = 0
+        self.best_eval_result = dict()
         self.model, self.optimizer = self.build()
         self.data_loader = SingleKittiDataLoader(file_path=self.args.train_dataset,
                                                  batch_size=self.args.batch_size,
@@ -79,16 +80,19 @@ class Trainer:
             model.load_state_dict(checkpoint['model'])
             optimizer.load_state_dict(checkpoint['optimizer'])
             self.pre_epoch = checkpoint['epoch']
+            self.best_eval_result = checkpoint['best_result']
             self.recorder.logger.info('Train continue from epoch {}'.format(checkpoint['epoch'] + 1))
 
         return model, optimizer
 
-    def train_model(self):
+    def train_model(self, cv_recorder=None):
         """
         Train model
         """
         checkpoint = dict()
         checkpoint['args'] = self.args
+        if not os.path.exists(self.args.save_dir):
+            os.makedirs(self.args.save_dir)
 
         self.recorder.logger.info(' >>> Starting training')
 
@@ -129,14 +133,19 @@ class Trainer:
             if epoch > 0 and epoch % self.args.validate_every == 0:
                 checkpoint['model'] = self.model.state_dict()
                 checkpoint['optimizer'] = self.optimizer.state_dict()
-                self.validate_model(epoch=epoch, checkpoint=checkpoint)
+                feedback = self.validate_model(epoch=epoch, checkpoint=checkpoint)
+                self.best_eval_result = feedback['best_result']
+                # if cv_rec exist, update information
+                if cv_recorder:
+                    cv_recorder.add_evaluation_result(feedback['global_metrics'], epoch,
+                                                      valid_scene=self.args.val_scene)
 
             # print
-            scalars = {
-                'loss': ave_loss
+            summary = {
+                'loss': float(ave_loss)
             }
-            for name, value in scalars.items():
-                self.recorder.writer.add_scalar('{}_Train/{}'.format(self.args.phase, name),
+            for name, value in summary.items():
+                self.recorder.writer.add_scalar('Train_{}/{}'.format(self.args.phase, name),
                                                 scalar_value=value,
                                                 global_step=epoch)  # train folder
 
@@ -147,13 +156,15 @@ class Trainer:
                     ave_loss,
                     end_time - start_time
                 ))
+                if cv_recorder:
+                    cv_recorder.add_train_record(summary, epoch, self.args.train_leave)
+
             # save checkpoint['model'] ['optimizer'] ['epoch'] in 'checkpoint_{}_{}_{}'.format(epoch, self.args.model, ave_loss)
             if epoch > 0 and epoch % self.args.save_every == 0:
                 checkpoint['model'] = self.model.state_dict()
                 checkpoint['optimizer'] = self.optimizer.state_dict()
                 checkpoint['epoch'] = epoch
-                if not os.path.exists(self.args.save_dir):
-                    os.makedirs(self.args.save_dir)
+                checkpoint['best_result'] = self.best_eval_result
                 checkpoint_path = os.path.join(self.args.save_dir,
                                                'checkpoint_{}_{}_{}'.format(epoch, self.args.model, ave_loss))
                 self.recorder.logger.info('Save {}'.format(checkpoint_path))
@@ -189,7 +200,8 @@ class Trainer:
             'phase': self.args.val_phase
         })
         validator = Tester(val_dict, self.recorder)
-        validator.evaluate(step=epoch)
+        feedback = validator.evaluate(step=epoch, best_result=self.best_eval_result)
+        return feedback
 
 
 class Tester:
@@ -252,12 +264,13 @@ class Tester:
 
         return model
 
-    def evaluate(self, step=1):
+    def evaluate(self, step=1, best_result=None):
         """
         Evaluate Loaded Model with one-by-one case. Then calculate metrics and plot result.
         Global and Case metrics: ave_loss, final_loss, ave_l2, final_l2, ade, fde
         Hint: differences between l2 and destination error, l2 is based on relative dis while the other on absolute one.
         :param step: global evaluation step. (ex. in validation, it could be epoch and in test usually is 1)
+        :param best_result: contains best result externally, if None then evaluation result this time will be the best.
         """
         self.recorder.logger.info('### Begin Evaluation {}, {} test cases in total'.format(
             step, len(self.test_dataset))
@@ -310,6 +323,8 @@ class Tester:
             # metric calculate
             l2 = l2_loss(y_hat, y)  # norm scale
             euler = l2_loss(abs_y_hat, abs_y)  # raw scale
+            l1_x = l1_loss(torch.unsqueeze(abs_y_hat[..., 0], dim=2), torch.unsqueeze(abs_y[..., 0], dim=2))
+            l1_y = l1_loss(torch.unsqueeze(abs_y_hat[..., 1], dim=2), torch.unsqueeze(abs_y[..., 1], dim=2))
 
             # average metrics calculation
             # Hint: when mode is absolute, abs_? and ? are the same, so L2 loss and destination error as well.
@@ -322,9 +337,17 @@ class Tester:
             fde = torch.sum(euler[:, -1, :]) / self.args.sample_times
             min_ade = torch.min(torch.sum(euler, dim=[1, 2]) / self.args.pred_len)
             min_fde = torch.min(euler[:, -1, :])
+            ade_x = torch.sum(l1_x) / (self.args.pred_len * self.args.sample_times)
+            ade_y = torch.sum(l1_y) / (self.args.pred_len * self.args.sample_times)
+            fde_x = torch.sum(l1_x[:, -1, :]) / self.args.sample_times
+            fde_y = torch.sum(l1_y[:, -1, :]) / self.args.sample_times
+            min_ade_x = torch.min(torch.sum(l1_x, dim=[1, 2]) / self.args.pred_len)
+            min_ade_y = torch.min(torch.sum(l1_y, dim=[1, 2]) / self.args.pred_len)
+            min_fde_x = torch.min(l1_x[:, -1, :])
+            min_fde_y = torch.min(l1_y[:, -1, :])
 
-            msg1 = '{}_AveLoss_{:.3}_AveL2_{:.3}_FinalL2_{:.3}'.format(
-                t, ave_loss, ave_l2, final_l2)
+            msg1 = '{}_AveLoss_{:.3}_adex_{:.3}_adey_{:.3}_fdex_{:.3}_fdey_{:.3}'.format(
+                t, ave_loss, ade_x, ade_y, fde_x, fde_y)
             msg2 = '{}_Ade_{:.3}_Fde_{:.3}_MAde_{:.3f}_MFde_{:.3f}'.format(
                 t, ade, fde, min_ade, min_fde)
             if not self.args.silence:
@@ -353,6 +376,14 @@ class Tester:
             record['fde'] = fde.cpu().numpy()
             record['min_ade'] = min_ade.cpu().numpy()
             record['min_fde'] = min_fde.cpu().numpy()
+            record['ade_x'] = ade_x.cpu().numpy()
+            record['ade_y'] = ade_y.cpu().numpy()
+            record['fde_x'] = fde_x.cpu().numpy()
+            record['fde_y'] = fde_y.cpu().numpy()
+            record['min_ade_x'] = min_ade_x.cpu().numpy()
+            record['min_ade_y'] = min_ade_y.cpu().numpy()
+            record['min_fde_x'] = min_fde_x.cpu().numpy()
+            record['min_fde_y'] = min_fde_y.cpu().numpy()
 
             save_list.append(record)
 
@@ -360,16 +391,31 @@ class Tester:
 
         # globally average metrics calculation
         self.recorder.logger.info('Calculation of Global Metrics.')
-        metric_list = ['ave_loss', 'final_loss', 'first_loss', 'ave_l2', 'final_l2', 'ade', 'fde', 'min_ade', 'min_fde']
-        scalars = dict()
+        metric_list = ['ave_loss', 'ade', 'fde', 'ade_x', 'ade_y', 'fde_x', 'fde_y',
+                       'min_ade', 'min_fde', 'min_ade_x', 'min_ade_y', 'min_fde_x', 'min_fde_y']
+        global_metrics = dict()
         for metric in metric_list:
             temp = list()
             for record in save_list:
                 temp.append(record[metric])
             self.recorder.logger.info('{} : {}'.format(metric, sum(temp) / len(temp)))
-            scalars[metric] = sum(temp) / len(temp)
-            self.recorder.writer.add_scalar('{}_Eval/{}'.format(self.args.phase, metric),
-                                            scalars[metric], global_step=step)
+            global_metrics[metric] = float(sum(temp) / len(temp))
+            self.recorder.writer.add_scalar('Eval_{}/{}'.format(self.args.phase, metric),
+                                            global_metrics[metric], global_step=step)
+
+        # update best result and add best result to global_metrics
+        if best_result is None:
+            best_result = dict()
+        else:
+            best_result = best_result.copy()
+        for k, v in global_metrics.items():
+            if k in best_result.keys():
+                best_result['best_' + k] = min(best_result[k], v)
+            else:
+                best_result['best_' + k] = v
+        for k, v in best_result.items():
+            global_metrics[k] = v
+
         # plot
         if self.args.plot:
             if self.model.loss == '2d_gaussian':
@@ -389,3 +435,5 @@ class Tester:
             self.recorder.logger.info('Export {} Done'.format(self.args.export_path))
 
         self.recorder.logger.info('### End Evaluation')
+
+        return {'global_metrics': global_metrics, 'best_result': best_result}
