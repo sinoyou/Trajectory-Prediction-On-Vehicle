@@ -107,7 +107,7 @@ def neg_likelihood_gaussian_pdf(gaussian_output, target):
     return loss
 
 
-def neg_likelihood_mixed_pdf(mixed_output, target, phi=1):
+def neg_likelihood_mixed_pdf(mixed_output, target, phi=2):
     """
     Calculate loss by non likelihood loss of mixed distribution.
      1 * Gaussian_PDF(x|mux, sx) + phi * Laplace_PDF(y|muy, sy)
