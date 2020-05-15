@@ -24,6 +24,7 @@ class Trainer:
         self.device = get_device()
         self.recorder = recorder
         self.pre_epoch = 0
+        self.best_eval_result = dict()
         self.model, self.optimizer = self.build()
         self.data_loader = SingleKittiDataLoader(file_path=self.args.train_dataset,
                                                  batch_size=self.args.batch_size,
@@ -78,6 +79,7 @@ class Trainer:
             model.load_state_dict(checkpoint['model'])
             optimizer.load_state_dict(checkpoint['optimizer'])
             self.pre_epoch = checkpoint['epoch']
+            self.best_eval_result = checkpoint['best_result']
             self.recorder.logger.info('Train continue from epoch {}'.format(checkpoint['epoch'] + 1))
 
         return model, optimizer
@@ -90,7 +92,6 @@ class Trainer:
         checkpoint['args'] = self.args
         if not os.path.exists(self.args.save_dir):
             os.makedirs(self.args.save_dir)
-        best_eval_result = dict()
 
         self.recorder.logger.info(' >>> Starting training')
 
@@ -137,11 +138,11 @@ class Trainer:
                     record = dict()
                     for key, value in feedback['global_metrics'].items():
                         record[key] = value
-                        if key in best_eval_result.keys():
-                            best_eval_result[key] = min(best_eval_result.get(key), value)
+                        if key in self.best_eval_result.keys():
+                            self.best_eval_result[key] = min(self.best_eval_result.get(key), value)
                         else:
-                            best_eval_result[key] = value
-                        record['best_' + key] = best_eval_result[key]
+                            self.best_eval_result[key] = value
+                        record['best_' + key] = self.best_eval_result[key]
                     cv_recorder.add_evaluation_result(record, epoch, valid_scene=self.args.val_scene)
 
             # print
@@ -168,6 +169,7 @@ class Trainer:
                 checkpoint['model'] = self.model.state_dict()
                 checkpoint['optimizer'] = self.optimizer.state_dict()
                 checkpoint['epoch'] = epoch
+                checkpoint['best_result'] = self.best_eval_result
                 checkpoint_path = os.path.join(self.args.save_dir,
                                                'checkpoint_{}_{}_{}'.format(epoch, self.args.model, ave_loss))
                 self.recorder.logger.info('Save {}'.format(checkpoint_path))
