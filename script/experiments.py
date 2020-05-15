@@ -49,22 +49,22 @@ class ArgsMaker:
             'train_dataset': '../data/kitti-all-label02.csv',
             'train_leave': None,  # missing
             'relative': False,
-            'total_len': 12,
-            'pred_len': 4,
+            'total_len': 14,
+            'pred_len': 8,
             # model
             'model': None,  # missing
-            'embedding_size': 128,
+            'embedding_size': 64,
             'cell_size': 128,
             'dropout': 0.0,
             'batch_norm': False,
             'bbox': False,
             'loss': None,  # missing
             # train args
-            'batch_size': 64,
-            'num_epochs': 11,  # debug!!!
+            'batch_size': 128,
+            'num_epochs': 301,  # debug!!!
             'learning_rate': 1e-3,
             'clip_threshold': 1.5,
-            'validate_every': 2,  # debug!!!
+            'validate_every': 15,  # debug!!!
             'weight_decay': 5e-5,
             # log
             'print_every': 1,
@@ -72,14 +72,14 @@ class ArgsMaker:
             'board_name': None,  # missing
             # load and save
             'save_dir': None,  # missing
-            'save_every': 10,  # debug!!!
+            'save_every': 15,  # debug!!!
             'restore_dir': None,
             # validation
             'val_dataset': '../data/kitti-all-label02.csv',
             'val_phase': 'test',
             'val_scene': None,  # missing
-            'val_obs_len': 8,
-            'val_pred_len': 4,
+            'val_obs_len': 6,
+            'val_pred_len': 8,
             'val_use_sample': False,
             'val_sample_times': 10,
             'val_plot': False,
@@ -364,7 +364,7 @@ if __name__ == '__main__':
     argsMaker = ArgsMaker()
     argsMaker.add_arg_rule('model', ['seq2seq', 'vanilla'])
     argsMaker.add_arg_rule('loss', ['2d_gaussian', 'mixed'])
-    # argsMaker.add_arg_rule(['val_use_sample', 'sample_times'], [[False, 1]] + [[True, i] for i in [5, 10, 20]], 'sample')
+    argsMaker.add_arg_rule(['val_use_sample', 'sample_times'], [[False, 1]] + [[True, i] for i in [5, 10, 20]], 'sample')
 
     blocker = ArgsBlocker()
     blocker.add_block_rule({'loss': 'mixed', 'val_use_sample': True})
