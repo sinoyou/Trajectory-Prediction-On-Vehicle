@@ -409,7 +409,7 @@ class Tester:
         else:
             best_result = best_result.copy()
         for k, v in global_metrics.items():
-            if k in best_result.keys():
+            if ('best_' + k) in best_result.keys():
                 best_result['best_' + k] = min(best_result['best_' + k], v)
             else:
                 best_result['best_' + k] = v
