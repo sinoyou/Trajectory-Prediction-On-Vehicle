@@ -31,7 +31,8 @@ cross_weights = {0: 0.014705882352941176,
                  18: 0.0,
                  19: 0.3431372549019608,
                  20: 0.0}
-cross_scene = [0, 1, 2, 4, 5, 7, 9, 10, 11, 12, 13, 14, 15, 16, 17, 19]
+# cross_scene = [0, 1, 2, 4, 5, 7, 9, 10, 11, 12, 13, 14, 15, 16, 17, 19]
+cross_scene = [0, 1, 13, 16, 19]
 cross_metrics = ['ave_loss', 'ade', 'fde', 'min_ade', 'min_fde', 'best_ave_loss',
                  'best_ade', 'best_fde', 'best_min_ade', 'best_min_fde']
 
@@ -59,10 +60,10 @@ class ArgsMaker:
             'loss': None,  # missing
             # train args
             'batch_size': 64,
-            'num_epochs': 6,  # debug!!!
+            'num_epochs': 11,  # debug!!!
             'learning_rate': 1e-3,
             'clip_threshold': 1.5,
-            'validate_every': 1,  # debug!!!
+            'validate_every': 2,  # debug!!!
             'weight_decay': 5e-5,
             # log
             'print_every': 1,
@@ -233,11 +234,11 @@ class CrossValidationRecorder:
                 data_at_time = data_no_nan[data_no_nan['epoch'] == time]
                 scene_at_time = data_at_time['valid_scene'].unique()
                 # check scene data not appeared in this metric at this time.
-                no_appear_at_time = list(set(weights.keys()) - set(scene_at_time))
+                no_appear_at_time = list(set(scenes) - set(scene_at_time))
                 no_appear_invalid_at_time = [scene for scene in no_appear_at_time if weights[scene] > 0]
                 if len(no_appear_invalid_at_time) > 0:
                     warning_msg.append(
-                        'Scene {} missing in metric {} at step = {}'.format(no_appear_invalid_at_time, metric, time)
+                        'Scene {} missing in metric = {} at step = {}'.format(no_appear_invalid_at_time, metric, time)
                     )
                 exist_scene_w = [weights[scene] for scene in scene_at_time]
                 exist_w_sum = sum(exist_scene_w)
@@ -249,7 +250,7 @@ class CrossValidationRecorder:
             metric_result = sorted(metric_result.items(), key=lambda item: item[0])
             # plot on board
             for time, value in metric_result:
-                recorder.writer.add_scalar('Global_CV_{}'.format(metric), value)
+                recorder.writer.add_scalar('CV_{}'.format(metric), scalar_value=value, global_step=time)
         return warning_msg
 
     def dump(self, path_prefix):
@@ -369,9 +370,9 @@ if __name__ == '__main__':
     candidates = argsMaker.making_args_candidates().items()
     for index, item in enumerate(candidates):
         if blocker.is_blocked(item[1]):
-            log_file.logger.info('{}/{} blocked '.format(index, len(candidates) - 1) + str(item[0]))
+            log_file.logger.info('{}/{} blocked '.format(index + 1, len(candidates)) + str(item[0]))
         else:
-            log_file.logger.info('{}/{} pass '.format(index, len(candidates) - 1) + str(item[0]))
+            log_file.logger.info('{}/{} pass '.format(index + 1, len(candidates)) + str(item[0]))
             task_runner = TaskRunner(prefix, item[1])
             task_runner.run(log_file, cross_validation=True)
     log_file.close()

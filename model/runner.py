@@ -13,6 +13,7 @@ from model.utils import l2_loss
 from model.vanilla import VanillaLSTM
 from model.seq2seq import Seq2SeqLSTM
 
+
 class Trainer:
     def __init__(self, args: argparse.ArgumentParser(), recorder):
         """
@@ -133,17 +134,10 @@ class Trainer:
                 checkpoint['model'] = self.model.state_dict()
                 checkpoint['optimizer'] = self.optimizer.state_dict()
                 feedback = self.validate_model(epoch=epoch, checkpoint=checkpoint)
+                self.best_eval_result = feedback['best_result']
                 # if cv_rec exist, update information
                 if cv_recorder:
-                    record = dict()
-                    for key, value in feedback['global_metrics'].items():
-                        record[key] = value
-                        if key in self.best_eval_result.keys():
-                            self.best_eval_result[key] = min(self.best_eval_result.get(key), value)
-                        else:
-                            self.best_eval_result[key] = value
-                        record['best_' + key] = self.best_eval_result[key]
-                    cv_recorder.add_evaluation_result(record, epoch, valid_scene=self.args.val_scene)
+                    cv_recorder.add_evaluation_result(feedback['global_metrics'], epoch, valid_scene=self.args.val_scene)
 
             # print
             summary = {
@@ -205,7 +199,7 @@ class Trainer:
             'phase': self.args.val_phase
         })
         validator = Tester(val_dict, self.recorder)
-        feedback = validator.evaluate(step=epoch)
+        feedback = validator.evaluate(step=epoch, best_result=self.best_eval_result)
         return feedback
 
 
@@ -269,12 +263,13 @@ class Tester:
 
         return model
 
-    def evaluate(self, step=1):
+    def evaluate(self, step=1, best_result=None):
         """
         Evaluate Loaded Model with one-by-one case. Then calculate metrics and plot result.
         Global and Case metrics: ave_loss, final_loss, ave_l2, final_l2, ade, fde
         Hint: differences between l2 and destination error, l2 is based on relative dis while the other on absolute one.
         :param step: global evaluation step. (ex. in validation, it could be epoch and in test usually is 1)
+        :param best_result: contains best result externally, if None then evaluation result this time will be the best.
         """
         self.recorder.logger.info('### Begin Evaluation {}, {} test cases in total'.format(
             step, len(self.test_dataset))
@@ -387,6 +382,20 @@ class Tester:
             global_metrics[metric] = float(sum(temp) / len(temp))
             self.recorder.writer.add_scalar('Eval_{}/{}'.format(self.args.phase, metric),
                                             global_metrics[metric], global_step=step)
+
+        # update best result and add best result to global_metrics
+        if best_result is None:
+            best_result = dict()
+        else:
+            best_result = best_result.copy()
+        for k, v in global_metrics.items():
+            if k in best_result.keys():
+                best_result['best_' + k] = min(best_result[k], v)
+            else:
+                best_result['best_' + k] = v
+        for k, v in best_result.items():
+            global_metrics[k] = v
+
         # plot
         if self.args.plot:
             if self.model.loss == '2d_gaussian':
@@ -407,4 +416,4 @@ class Tester:
 
         self.recorder.logger.info('### End Evaluation')
 
-        return {'global_metrics': global_metrics}
+        return {'global_metrics': global_metrics, 'best_result': best_result}
