@@ -308,8 +308,8 @@ class TaskRunner:
             _task_attr = AttrDict(self.task_attr.copy())
             _task_attr.train_leave = scene_pair[0]
             _task_attr.val_scene = scene_pair[1]
-            _task_attr.phase = 'leave_{}'.format(scene_pair[0])
-            _task_attr.val_phase = 'teston_{}'.format(scene_pair[1])
+            _task_attr.phase = 'leave_{}_teston_{}'.format(scene_pair[0], scene_pair[1])
+            _task_attr.val_phase = 'leave_{}_teston_{}'.format(scene_pair[0], scene_pair[1])
             # in cv mode, more sub dirs will be made under current save dir.
             if cross_validation:
                 _task_attr.save_dir = os.path.join(_task_attr.save_dir,

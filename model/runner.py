@@ -142,10 +142,10 @@ class Trainer:
 
             # print
             summary = {
-                'loss': float(ave_loss)
+                'train_loss': float(ave_loss)
             }
             for name, value in summary.items():
-                self.recorder.writer.add_scalar('Train_{}/{}'.format(self.args.phase, name),
+                self.recorder.writer.add_scalar('{}/{}'.format(self.args.phase, name),
                                                 scalar_value=value,
                                                 global_step=epoch)  # train folder
 
@@ -400,7 +400,7 @@ class Tester:
                 temp.append(record[metric])
             self.recorder.logger.info('{} : {}'.format(metric, sum(temp) / len(temp)))
             global_metrics[metric] = float(sum(temp) / len(temp))
-            self.recorder.writer.add_scalar('Eval_{}/{}'.format(self.args.phase, metric),
+            self.recorder.writer.add_scalar('{}/{}'.format(self.args.phase, metric),
                                             global_metrics[metric], global_step=step)
 
         # update best result and add best result to global_metrics
