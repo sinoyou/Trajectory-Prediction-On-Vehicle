@@ -167,8 +167,11 @@ class Trainer:
                 checkpoint['best_result'] = self.best_eval_result
                 checkpoint_path = os.path.join(self.args.save_dir,
                                                'checkpoint_{}_{}_{}'.format(epoch, self.args.model, ave_loss))
+                newest_path = os.path.join(self.args.save_dir, 'newest')
                 self.recorder.logger.info('Save {}'.format(checkpoint_path))
+                self.recorder.logger.info('Update latest checkpoint version.')
                 torch.save(checkpoint, checkpoint_path)
+                torch.save(checkpoint, newest_path)
                 self.recorder.logger.info('Done')
 
     def validate_model(self, epoch, checkpoint):
