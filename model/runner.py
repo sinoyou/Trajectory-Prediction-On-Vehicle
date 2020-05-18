@@ -96,8 +96,7 @@ class Trainer:
         # Hint: this function is used together with experiments.py/cross_validation. Other purposes are not recommended.
         if only_eval:
             self.recorder.logger.info('>>> Only Evaluation Mode Begin')
-            checkpoint['model'] = self.model.state_dict()
-            checkpoint['optimizer'] = self.optimizer.state_dict()
+            checkpoint = self.get_checkpoint()
             self.validate_model(epoch=self.pre_epoch, checkpoint=checkpoint, cv_recorder=cv_recorder)
             self.recorder.logger.info('>>> Only Evaluation Mode End')
             return
