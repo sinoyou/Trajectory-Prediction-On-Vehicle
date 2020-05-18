@@ -38,7 +38,7 @@ cross_metrics = ['ave_loss', 'ade', 'fde', 'min_ade', 'min_fde', 'best_ave_loss'
                  'best_ade', 'best_fde', 'best_min_ade', 'best_min_fde',
                  'ade_x', 'ade_y', 'fde_x', 'fde_y', 'min_ade_x', 'min_ade_y', 'min_fde_x', 'min_fde_y']
 # only_eval_model_name = 'latest_checkpoint.ckpt'
-only_eval_model_name = 'temp_checkpoint_val'
+only_eval_model_name = 'temp_checkpoint_val.ckpt'
 
 
 class ArgsMaker:
@@ -385,7 +385,7 @@ if __name__ == '__main__':
     argsMaker.add_arg_rule('model', ['seq2seq', 'vanilla'])
     argsMaker.add_arg_rule(['loss', 'val_sample_times'], [('mixed', [0]), ('2d_gaussian', [0, 10, 20])], 'Lo_Sam')
     argsMaker.add_arg_rule(['embedding_size', 'cell_size'], [(64, 128), (32, 64), (16, 32), (8, 16)], brief='ebd_cell')
-    argsMaker.add_arg_rule(['relative'], [False, True], brief='rel')
+    argsMaker.add_arg_rule('relative', [False, True], brief='rel')
 
     blocker = ArgsBlocker()
     candidates = argsMaker.making_args_candidates().items()

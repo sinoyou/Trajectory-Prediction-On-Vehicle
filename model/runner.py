@@ -89,8 +89,6 @@ class Trainer:
         """
         Train model
         """
-        checkpoint = dict()
-        checkpoint['args'] = self.args
         if not os.path.exists(self.args.save_dir):
             os.makedirs(self.args.save_dir)
 
@@ -191,7 +189,7 @@ class Trainer:
             # create Tester
             val_dict = AttrDict({
                 'model': self.args.model,
-                'load_path': os.path.join(self.args.save_dir, 'temp_checkpoint_val'),
+                'load_path': os.path.join(self.args.save_dir, 'temp_checkpoint_val.ckpt'),
                 'obs_len': self.args.val_obs_len,
                 'pred_len': self.args.val_pred_len,
                 'sample_times': sample_time,
@@ -231,6 +229,7 @@ class Trainer:
         checkpoint['optimizer'] = self.optimizer.state_dict()
         checkpoint['best_result'] = self.best_eval_result
         checkpoint['epoch'] = epoch
+        checkpoint['args'] = self.args
         return checkpoint
 
 
