@@ -92,7 +92,6 @@ class VanillaLSTM(torch.nn.Module):
         """
         Run one train step
         :param y_gt: Groud Truth y [batch_size, pred_len, 2]
-        :param vanilla: vanilla model
         :param x: [batch_size, obs_len, 2]
         :return: dict()
         """
@@ -113,7 +112,6 @@ class VanillaLSTM(torch.nn.Module):
     def inference(self, datax, pred_len, sample_times, use_sample):
         """
         During evaluation, use trained model to inference.
-        :param model: Loaded Vanilla Model
         :param datax: obs data [1, obs_len, 2]
         :param pred_len: length of prediction
         :param sample_times: times of sampling trajectories
