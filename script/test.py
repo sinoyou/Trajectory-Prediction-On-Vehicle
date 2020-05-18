@@ -6,7 +6,7 @@ from script.tools import Recorder
 from model.runner import Tester
 
 sys.path.append('../')
-os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'  # todo not recommended
+# os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'  # todo not recommended
 
 # args parser
 parser = argparse.ArgumentParser()

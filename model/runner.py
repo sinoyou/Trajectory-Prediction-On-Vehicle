@@ -79,9 +79,9 @@ class Trainer:
             checkpoint = torch.load(self.args.restore_dir)
             model.load_state_dict(checkpoint['model'])
             optimizer.load_state_dict(checkpoint['optimizer'])
-            self.pre_epoch = checkpoint['epoch']
-            self.best_eval_result = checkpoint['best_result']
-            self.recorder.logger.info('Train continue from epoch {}'.format(checkpoint['epoch'] + 1))
+            self.pre_epoch = checkpoint['epoch'] if 'epoch' in checkpoint.keys() else 0
+            self.best_eval_result = checkpoint['best_result'] if 'best_result' in checkpoint.keys() else dict()
+            self.recorder.logger.info('Saved model trained on epoch = {}'.format(self.pre_epoch))
 
         return model, optimizer
 
@@ -97,10 +97,11 @@ class Trainer:
         # Only Evaluation Mode, restored model will be directly used for evaluation
         # Hint: this function is used together with experiments.py/cross_validation. Other purposes are not recommended.
         if only_eval:
-            self.recorder.logger.info('>>> Only Evaluation Mode')
+            self.recorder.logger.info('>>> Only Evaluation Mode Begin')
             checkpoint['model'] = self.model.state_dict()
             checkpoint['optimizer'] = self.optimizer.state_dict()
             self.validate_model(epoch=self.pre_epoch, checkpoint=checkpoint, cv_recorder=cv_recorder)
+            self.recorder.logger.info('>>> Only Evaluation Mode End')
             return
 
         self.recorder.logger.info(' >>> Starting training')
@@ -140,8 +141,10 @@ class Trainer:
             # validate -> validate_model
             # save checkpoint['model'] ['optimizer'] in temp_checkpoint_val
             if epoch > 0 and epoch % self.args.validate_every == 0:
-                checkpoint['model'] = self.model.state_dict()
-                checkpoint['optimizer'] = self.optimizer.state_dict()
+                checkpoint = self.get_checkpoint(epoch=epoch)
+                # save current model parameters temporarily.
+                checkpoint_path = os.path.join(self.args.save_dir, 'temp_checkpoint_val.ckpt')
+                torch.save(checkpoint, checkpoint_path)
                 self.validate_model(epoch=epoch, checkpoint=checkpoint, cv_recorder=cv_recorder)
 
             # print
@@ -165,10 +168,7 @@ class Trainer:
 
             # save checkpoint['model'] ['optimizer'] ['epoch'] in 'checkpoint_{}_{}_{}'.format(epoch, self.args.model, ave_loss)
             if epoch > 0 and epoch % self.args.save_every == 0:
-                checkpoint['model'] = self.model.state_dict()
-                checkpoint['optimizer'] = self.optimizer.state_dict()
-                checkpoint['epoch'] = epoch
-                checkpoint['best_result'] = self.best_eval_result
+                checkpoint = self.get_checkpoint(epoch=epoch)
                 checkpoint_path = os.path.join(self.args.save_dir,
                                                'checkpoint_{}_{}.ckpt'.format(epoch, self.args.model))
                 newest_path = os.path.join(self.args.save_dir, 'latest_checkpoint.ckpt')
@@ -184,12 +184,10 @@ class Trainer:
         1. One trained model can corresponds to multiple validation config on sample_times.
         2. After each validation, result under single config will be used for updating best result.
         """
-        # save current model parameters temporarily.
-        checkpoint_path = os.path.join(self.args.save_dir, 'temp_checkpoint_val')
-        torch.save(checkpoint, checkpoint_path)
+        if isinstance(self.args.val_sample_times, int):
+            self.args.val_sample_times = [self.args.val_sample_times]
 
-        for sample_time in self.args.sample_times:
-            self.recorder.logger.info('validating sample_times = {}'.format(sample_time))
+        for sample_time in self.args.val_sample_times:
             # create Tester
             val_dict = AttrDict({
                 'model': self.args.model,
@@ -213,7 +211,7 @@ class Trainer:
 
             # evaluation result process
             self.best_eval_result.setdefault(sample_time, dict())
-            for key, value in feedback['global_metrics']:
+            for key, value in feedback['global_metrics'].items():
                 best_eval_sample = self.best_eval_result[sample_time]
                 if 'best_' + key in best_eval_sample.keys():
                     best_eval_sample['best_' + key] = min(best_eval_sample['best_' + key], value)
@@ -222,11 +220,18 @@ class Trainer:
             # cv recoder not None, then combine feedback and best result to record.
             if cv_recorder:
                 temp = feedback['global_metrics'].copy()
-                for k, v in self.best_eval_result[sample_time]:
+                for k, v in self.best_eval_result[sample_time].items():
                     temp[k] = v
-                cv_recorder.add_train_record(record=temp, epoch=epoch, train_leave=self.args.train_leave,
-                                             sample_time=sample_time)
-            return feedback
+                cv_recorder.add_evaluation_result(record=temp, epoch=epoch, valid_scene=self.args.val_scene,
+                                                  sample_time=sample_time)
+
+    def get_checkpoint(self, epoch):
+        checkpoint = dict()
+        checkpoint['model'] = self.model.state_dict()
+        checkpoint['optimizer'] = self.optimizer.state_dict()
+        checkpoint['best_result'] = self.best_eval_result
+        checkpoint['epoch'] = epoch
+        return checkpoint
 
 
 class Tester:
@@ -249,7 +254,7 @@ class Tester:
 
     def args_check(self):
         if self.args.sample_times >= 1:
-            self.recorder.logger.info('AutoRegressive Mode: Sample')
+            self.recorder.logger.info('AutoRegressive Mode: Sample = {}'.format(self.args.sample_times))
         elif self.args.sample_times == 0:
             self.recorder.logger.info('AutoRegressive Mode: Biggest Likelihood.')
         else:
@@ -267,7 +272,6 @@ class Tester:
         train_args = checkpoint['args']
         self.train_args = train_args
         if self.args.model == 'vanilla':
-            self.model = VanillaLSTM
             model = VanillaLSTM(input_dim=2,
                                 output_dim=5,
                                 emd_size=train_args.embedding_size,
@@ -276,7 +280,6 @@ class Tester:
                                 dropout=train_args.dropout,
                                 loss=train_args.loss)
         elif self.args.model == 'seq2seq':
-            self.model = Seq2SeqLSTM
             model = Seq2SeqLSTM(input_dim=2,
                                 output_dim=5,
                                 pred_length=train_args.pred_len,
@@ -353,19 +356,20 @@ class Tester:
 
             # average metrics calculation
             # Hint: when mode is absolute, abs_? and ? are the same, so L2 loss and destination error as well.
-            ave_loss = torch.sum(loss) / (self.args.pred_len * self.args.sample_times)
-            first_loss = torch.sum(loss[:, 0, :]) / self.args.sample_times
-            final_loss = torch.sum(loss[:, -1, :]) / self.args.sample_times
-            ave_l2 = torch.sum(l2) / (self.args.pred_len * self.args.sample_times)
-            final_l2 = torch.sum(l2[:, -1, :]) / self.args.sample_times
-            ade = torch.sum(euler) / (self.args.pred_len * self.args.sample_times)
-            fde = torch.sum(euler[:, -1, :]) / self.args.sample_times
+            samples_count = loss.shape[0]
+            ave_loss = torch.sum(loss) / (self.args.pred_len * samples_count)
+            first_loss = torch.sum(loss[:, 0, :]) / samples_count
+            final_loss = torch.sum(loss[:, -1, :]) / samples_count
+            ave_l2 = torch.sum(l2) / (self.args.pred_len * samples_count)
+            final_l2 = torch.sum(l2[:, -1, :]) / samples_count
+            ade = torch.sum(euler) / (self.args.pred_len * samples_count)
+            fde = torch.sum(euler[:, -1, :]) / samples_count
             min_ade = torch.min(torch.sum(euler, dim=[1, 2]) / self.args.pred_len)
             min_fde = torch.min(euler[:, -1, :])
-            ade_x = torch.sum(l1_x) / (self.args.pred_len * self.args.sample_times)
-            ade_y = torch.sum(l1_y) / (self.args.pred_len * self.args.sample_times)
-            fde_x = torch.sum(l1_x[:, -1, :]) / self.args.sample_times
-            fde_y = torch.sum(l1_y[:, -1, :]) / self.args.sample_times
+            ade_x = torch.sum(l1_x) / (self.args.pred_len * samples_count)
+            ade_y = torch.sum(l1_y) / (self.args.pred_len * samples_count)
+            fde_x = torch.sum(l1_x[:, -1, :]) / samples_count
+            fde_y = torch.sum(l1_y[:, -1, :]) / samples_count
             min_ade_x = torch.min(torch.sum(l1_x, dim=[1, 2]) / self.args.pred_len)
             min_ade_y = torch.min(torch.sum(l1_y, dim=[1, 2]) / self.args.pred_len)
             min_fde_x = torch.min(l1_x[:, -1, :])
