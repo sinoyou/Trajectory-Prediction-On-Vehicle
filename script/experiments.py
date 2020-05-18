@@ -30,12 +30,15 @@ cross_weights = {0: 0.014705882352941176,
                  17: 0.05392156862745098,
                  18: 0.0,
                  19: 0.3431372549019608,
-                 20: 0.0}
+                 20: 0.0
+                 }
 cross_scene = [0, 1, 2, 4, 5, 7, 9, 10, 11, 12, 13, 14, 15, 16, 17, 19]
-# cross_scene = [0, 1, 13, 16, 19]
+# cross_scene = [0, 1, 2, 4]
 cross_metrics = ['ave_loss', 'ade', 'fde', 'min_ade', 'min_fde', 'best_ave_loss',
                  'best_ade', 'best_fde', 'best_min_ade', 'best_min_fde',
                  'ade_x', 'ade_y', 'fde_x', 'fde_y', 'min_ade_x', 'min_ade_y', 'min_fde_x', 'min_fde_y']
+# only_eval_model_name = 'latest_checkpoint.ckpt'
+only_eval_model_name = 'temp_checkpoint_val'
 
 
 class ArgsMaker:
@@ -163,8 +166,8 @@ class ArgsBlocker:
     def add_block_rule(self, rule):
         """
         Add block rule to black list.
-        If an args configuration meeting all value in rule, then blocked.
-        :param rule: dict()
+        If an args configuration meeting rule, then blocked.
+        :param rule: func()
         """
         self.black_list.append(rule)
 
@@ -175,8 +178,7 @@ class ArgsBlocker:
         :return: true/false
         """
         for rule in self.black_list:
-            meet_args = [key for key, value in rule.items() if attr[key] == value]
-            if len(meet_args) == len(rule.keys()):
+            if rule(attr):
                 return True
         return False
 
@@ -200,13 +202,14 @@ class CrossValidationRecorder:
         record['epoch'] = epoch
         self.train_records = self.train_records.append(pd.DataFrame(data=record, index=[0]), ignore_index=True)
 
-    def add_evaluation_result(self, record, epoch, valid_scene):
+    def add_evaluation_result(self, record, epoch, valid_scene, sample_time):
         if isinstance(valid_scene, list):
             if len(valid_scene) > 1:
                 raise Exception('CV Recorder no support for multiple scenes {}'.format(valid_scene))
             valid_scene = valid_scene[0]
         record['valid_scene'] = valid_scene
         record['epoch'] = epoch
+        record['sample_time'] = sample_time
         self.eval_records = self.eval_records.append(pd.DataFrame(data=record, index=[0]), ignore_index=True)
 
     def calc_cv_result(self, metrics, recorder, weights):
@@ -226,32 +229,42 @@ class CrossValidationRecorder:
         if len(no_appear_invalid) > 0:
             warning_msg.append('Scene of weight > 0 {} never appears in data'.format(no_appear_invalid))
 
-        # calculate by metrics
-        for metric in metrics:
-            data_no_nan = self.eval_records[~self.eval_records[metric].isna()]  # get data without nan in 'metric'
-            times = data_no_nan['epoch'].unique()  # get all time steps
-            metric_result = dict()
-            for time in times:
-                data_at_time = data_no_nan[data_no_nan['epoch'] == time]
-                scene_at_time = data_at_time['valid_scene'].unique()
-                # check scene data not appeared in this metric at this time.
-                no_appear_at_time = list(set(scenes) - set(scene_at_time))
-                no_appear_invalid_at_time = [scene for scene in no_appear_at_time if weights[scene] > 0]
-                if len(no_appear_invalid_at_time) > 0:
-                    warning_msg.append(
-                        'Scene {} missing in metric = {} at step = {}'.format(no_appear_invalid_at_time, metric, time)
-                    )
-                exist_scene_w = [weights[scene] for scene in scene_at_time]
-                exist_w_sum = sum(exist_scene_w)
-                # iterate by row and calculate cv of metric at time
-                result = 0.0
-                for _, row in data_at_time.iterrows():
-                    result += row[metric] * weights[row['valid_scene']] / exist_w_sum
-                metric_result[time] = result
-            metric_result = sorted(metric_result.items(), key=lambda item: item[0])
-            # plot on board
-            for time, value in metric_result:
-                recorder.writer.add_scalar('CV_{}'.format(metric), scalar_value=value, global_step=time)
+        # level 1: filter by sample_time
+        # level 2: filter by metric
+        # level 3: filter by epoch time (scene missing check)
+        # level 4: weighted sum by scenes.
+        # loop different sample configuration
+        sample_times = self.eval_records['sample_time'].unique()
+        for sample_time in sample_times:
+            data = self.eval_records[self.eval_records['sample_time'] == sample_time]
+            # calculate by metrics
+            for metric in metrics:
+                data_no_nan = data[~data[metric].isna()]  # get data without nan in 'metric'
+                times = data_no_nan['epoch'].unique()  # get all time steps
+                metric_result = dict()
+                for time in times:
+                    data_at_time = data_no_nan[data_no_nan['epoch'] == time]
+                    scene_at_time = data_at_time['valid_scene'].unique()
+                    # check scene data not appeared in this metric at this time.
+                    no_appear_at_time = list(set(scenes) - set(scene_at_time))
+                    no_appear_invalid_at_time = [scene for scene in no_appear_at_time if weights[scene] > 0]
+                    if len(no_appear_invalid_at_time) > 0:
+                        warning_msg.append(
+                            'Scene {} missing in metric = {} at step = {} sample = {}'.format(no_appear_invalid_at_time,
+                                                                                              metric, time, sample_time)
+                        )
+                    exist_scene_w = [weights[scene] for scene in scene_at_time]
+                    exist_w_sum = sum(exist_scene_w)
+                    # iterate by row and calculate cv of metric at time
+                    result = 0.0
+                    for _, row in data_at_time.iterrows():
+                        result += row[metric] * weights[row['valid_scene']] / exist_w_sum
+                    metric_result[time] = result
+                metric_result = sorted(metric_result.items(), key=lambda item: item[0])
+                # plot on board
+                for time, value in metric_result:
+                    recorder.writer.add_scalar('CV_{}/sample_{}'.format(metric, sample_time),
+                                               scalar_value=value, global_step=time)
         return warning_msg
 
     def dump(self, path_prefix):
@@ -289,7 +302,7 @@ class TaskRunner:
         # initial recorder and trainer
         self.recorder = Recorder(summary_path=task_attr.board_name, logfile=True, stream=False)
 
-    def run(self, global_recorder, cross_validation):
+    def run(self, global_recorder, cross_validation, only_eval):
         # if cv is True, then cv scenes are set
         if cross_validation:
             if self.task_attr.train_leave or self.task_attr.val_scene:
@@ -311,10 +324,16 @@ class TaskRunner:
             _task_attr.val_scene = scene_pair[1]
             _task_attr.phase = 'leave_{}_teston_{}'.format(scene_pair[0], scene_pair[1])
             _task_attr.val_phase = 'leave_{}_teston_{}'.format(scene_pair[0], scene_pair[1])
+
             # in cv mode, more sub dirs will be made under current save dir.
             if cross_validation:
                 _task_attr.save_dir = os.path.join(_task_attr.save_dir,
                                                    'leave_{}_test_{}'.format(scene_pair[0], scene_pair[1]))
+
+            # in only evaluation mode, trained model needs to be restored.
+            if only_eval:
+                _task_attr.restore_dir = os.path.join(_task_attr.save_dir, only_eval_model_name)
+
             try:
                 self.recorder.logger.info(_task_attr)
                 trainer = Trainer(_task_attr, self.recorder)
@@ -322,12 +341,12 @@ class TaskRunner:
                     global_recorder.logger.info('CV Running @ leave {} and val {}. Save @ {}, Runs+Log @ {}'.format(
                         _task_attr.train_leave, _task_attr.val_scene, _task_attr.save_dir, _task_attr.board_name
                     ))
-                    trainer.train_model(cv_recorder=cv_rec)
+                    trainer.train_model(cv_recorder=cv_rec, only_eval=only_eval)
                 else:
                     global_recorder.logger.info('Normal Running @ leave {} and val {}. Save @ {}, Runs+Log @ {}'.format(
                         _task_attr.train_leave, _task_attr.val_scene, _task_attr.save_dir, _task_attr.board_name
                     ))
-                    trainer.train_model()
+                    trainer.train_model(only_eval=only_eval)
 
                 global_recorder.logger.info('Task Ends Successfully. Save Dir = {}'.format(_task_attr.save_dir))
                 self.recorder.logger.info('Task Ends Successfully. Save Dir = {} \n\n\n'.format(_task_attr.save_dir))
@@ -358,16 +377,17 @@ if __name__ == '__main__':
     #    a. Use prefix to identify different batch experiments.
     #    b. All data in one batch experiment will be in stored in runs/prefix/ and save/prefix/
     # experiment prefix
-    prefix = '0515'
+    prefix = '0519'
+    only_eval = False
     log_file = Recorder(os.path.join(runs_dir_root, prefix), board=False, logfile=True, stream=True)
     # 添加生成参数的规则
     argsMaker = ArgsMaker()
     argsMaker.add_arg_rule('model', ['seq2seq', 'vanilla'])
-    argsMaker.add_arg_rule('loss', ['2d_gaussian', 'mixed'])
-    argsMaker.add_arg_rule(['val_use_sample', 'val_sample_times'], [[False, 1]] + [[True, i] for i in [5, 10, 20]], 'sample')
+    argsMaker.add_arg_rule(['loss', 'val_sample_times'], [('mixed', [0]), ('2d_gaussian', [0, 10, 20])], 'Lo_Sam')
+    argsMaker.add_arg_rule(['embedding_size', 'cell_size'], [(64, 128), (32, 64), (16, 32), (8, 16)], brief='ebd_cell')
+    argsMaker.add_arg_rule(['relative'], [False, True], brief='rel')
 
     blocker = ArgsBlocker()
-    blocker.add_block_rule({'loss': 'mixed', 'val_use_sample': True})
     candidates = argsMaker.making_args_candidates().items()
     for index, item in enumerate(candidates):
         if blocker.is_blocked(item[1]):
@@ -375,5 +395,5 @@ if __name__ == '__main__':
         else:
             log_file.logger.info('{}/{} pass '.format(index + 1, len(candidates)) + str(item[0]))
             task_runner = TaskRunner(prefix, item[1])
-            task_runner.run(log_file, cross_validation=True)
+            task_runner.run(log_file, cross_validation=True, only_eval=only_eval)
     log_file.close()

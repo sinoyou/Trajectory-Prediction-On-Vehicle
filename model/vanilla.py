@@ -92,7 +92,6 @@ class VanillaLSTM(torch.nn.Module):
         """
         Run one train step
         :param y_gt: Groud Truth y [batch_size, pred_len, 2]
-        :param vanilla: vanilla model
         :param x: [batch_size, obs_len, 2]
         :return: dict()
         """
@@ -110,20 +109,25 @@ class VanillaLSTM(torch.nn.Module):
     def get_loss(self, distribution, y_gt):
         return get_loss_by_name(distribution=distribution, y=y_gt, name=self.loss)
 
-    def inference(self, datax, pred_len, sample_times, use_sample):
+    def inference(self, datax, pred_len, sample_times):
         """
         During evaluation, use trained model to inference.
-        :param model: Loaded Vanilla Model
         :param datax: obs data [1, obs_len, 2]
         :param pred_len: length of prediction
-        :param sample_times: times of sampling trajectories
-        :param use_sample: if True, applying sample in inference. if False, use average value in gaussian.
+        :param sample_times: times of sampling trajectories (if 0, means not using sample)
         :return: gaussian_output [sample_times, pred_len, 5], location_output[sample_times, pred_len, 2]
         """
         device = datax.device
 
-        if self.loss != '2d_gaussian' and use_sample:
+        if self.loss != '2d_gaussian' and sample_times >= 1:
             raise Exception('No sample support for {}'.format(self.loss))
+
+        if sample_times == 0:
+            sample_times = 1
+            use_sample = False
+        else:
+            sample_times = sample_times
+            use_sample = True
 
         with torch.no_grad():
             sample_distribution = list()

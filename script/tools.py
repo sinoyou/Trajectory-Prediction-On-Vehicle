@@ -50,11 +50,11 @@ class Recorder:
         stream_handler.setLevel(logging.INFO)
         stream_handler.setFormatter(formatter)
 
-        self.logger.setLevel(logging.INFO)
         if stream:
             self.logger.addHandler(stream_handler)
         if logfile:
             self.logger.addHandler(file_handler)
+        self.logger.setLevel(logging.INFO)
 
     def plot_trajectory(self, trajectories, step, cat_point, mode, relavtive):
         """
