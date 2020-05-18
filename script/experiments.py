@@ -200,13 +200,14 @@ class CrossValidationRecorder:
         record['epoch'] = epoch
         self.train_records = self.train_records.append(pd.DataFrame(data=record, index=[0]), ignore_index=True)
 
-    def add_evaluation_result(self, record, epoch, valid_scene):
+    def add_evaluation_result(self, record, epoch, valid_scene, sample_time):
         if isinstance(valid_scene, list):
             if len(valid_scene) > 1:
                 raise Exception('CV Recorder no support for multiple scenes {}'.format(valid_scene))
             valid_scene = valid_scene[0]
         record['valid_scene'] = valid_scene
         record['epoch'] = epoch
+        record['sample_time'] = sample_time
         self.eval_records = self.eval_records.append(pd.DataFrame(data=record, index=[0]), ignore_index=True)
 
     def calc_cv_result(self, metrics, recorder, weights):
@@ -226,32 +227,42 @@ class CrossValidationRecorder:
         if len(no_appear_invalid) > 0:
             warning_msg.append('Scene of weight > 0 {} never appears in data'.format(no_appear_invalid))
 
-        # calculate by metrics
-        for metric in metrics:
-            data_no_nan = self.eval_records[~self.eval_records[metric].isna()]  # get data without nan in 'metric'
-            times = data_no_nan['epoch'].unique()  # get all time steps
-            metric_result = dict()
-            for time in times:
-                data_at_time = data_no_nan[data_no_nan['epoch'] == time]
-                scene_at_time = data_at_time['valid_scene'].unique()
-                # check scene data not appeared in this metric at this time.
-                no_appear_at_time = list(set(scenes) - set(scene_at_time))
-                no_appear_invalid_at_time = [scene for scene in no_appear_at_time if weights[scene] > 0]
-                if len(no_appear_invalid_at_time) > 0:
-                    warning_msg.append(
-                        'Scene {} missing in metric = {} at step = {}'.format(no_appear_invalid_at_time, metric, time)
-                    )
-                exist_scene_w = [weights[scene] for scene in scene_at_time]
-                exist_w_sum = sum(exist_scene_w)
-                # iterate by row and calculate cv of metric at time
-                result = 0.0
-                for _, row in data_at_time.iterrows():
-                    result += row[metric] * weights[row['valid_scene']] / exist_w_sum
-                metric_result[time] = result
-            metric_result = sorted(metric_result.items(), key=lambda item: item[0])
-            # plot on board
-            for time, value in metric_result:
-                recorder.writer.add_scalar('CV_{}'.format(metric), scalar_value=value, global_step=time)
+        # level 1: filter by sample_time
+        # level 2: filter by metric
+        # level 3: filter by epoch time (scene missing check)
+        # level 4: weighted sum by scenes.
+        # loop different sample configuration
+        sample_times = self.eval_records['sample_time'].unique()
+        for sample_time in sample_times:
+            data = self.eval_records[self.eval_records['sample_time'] == sample_times]
+            # calculate by metrics
+            for metric in metrics:
+                data_no_nan = data[~data[metric].isna()]  # get data without nan in 'metric'
+                times = data_no_nan['epoch'].unique()  # get all time steps
+                metric_result = dict()
+                for time in times:
+                    data_at_time = data_no_nan[data_no_nan['epoch'] == time]
+                    scene_at_time = data_at_time['valid_scene'].unique()
+                    # check scene data not appeared in this metric at this time.
+                    no_appear_at_time = list(set(scenes) - set(scene_at_time))
+                    no_appear_invalid_at_time = [scene for scene in no_appear_at_time if weights[scene] > 0]
+                    if len(no_appear_invalid_at_time) > 0:
+                        warning_msg.append(
+                            'Scene {} missing in metric = {} at step = {} sample = {}'.format(no_appear_invalid_at_time,
+                                                                                              metric, time, sample_time)
+                        )
+                    exist_scene_w = [weights[scene] for scene in scene_at_time]
+                    exist_w_sum = sum(exist_scene_w)
+                    # iterate by row and calculate cv of metric at time
+                    result = 0.0
+                    for _, row in data_at_time.iterrows():
+                        result += row[metric] * weights[row['valid_scene']] / exist_w_sum
+                    metric_result[time] = result
+                metric_result = sorted(metric_result.items(), key=lambda item: item[0])
+                # plot on board
+                for time, value in metric_result:
+                    recorder.writer.add_scalar('CV_{}/sample_{}'.format(metric, sample_time),
+                                               scalar_value=value, global_step=time)
         return warning_msg
 
     def dump(self, path_prefix):
@@ -364,7 +375,8 @@ if __name__ == '__main__':
     argsMaker = ArgsMaker()
     argsMaker.add_arg_rule('model', ['seq2seq', 'vanilla'])
     argsMaker.add_arg_rule('loss', ['2d_gaussian', 'mixed'])
-    argsMaker.add_arg_rule(['val_use_sample', 'val_sample_times'], [[False, 1]] + [[True, i] for i in [5, 10, 20]], 'sample')
+    argsMaker.add_arg_rule(['val_use_sample', 'val_sample_times'], [[False, 1]] + [[True, i] for i in [5, 10, 20]],
+                           'sample')
 
     blocker = ArgsBlocker()
     blocker.add_block_rule({'loss': 'mixed', 'val_use_sample': True})

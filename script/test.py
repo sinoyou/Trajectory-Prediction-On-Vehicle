@@ -18,8 +18,7 @@ def test():
     parser.add_argument('--load_path', type=str)
     parser.add_argument('--obs_len', default=8, type=int)
     parser.add_argument('--pred_len', default=4, type=int)
-    parser.add_argument('--use_sample', default=False, type=bool)
-    parser.add_argument('--sample_times', default=10, type=int)
+    parser.add_argument('--sample_times', default=0, type=int)
 
     # dataset
     parser.add_argument('--test_dataset', type=str)

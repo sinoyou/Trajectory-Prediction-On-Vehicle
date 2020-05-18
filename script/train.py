@@ -62,8 +62,7 @@ def run():
     # scenes are used for validation. call in cmd like this: --val_scene 8
     parser.add_argument('--val_obs_len', type=int)
     parser.add_argument('--val_pred_len', type=int)
-    parser.add_argument('--val_use_sample', default=False, type=bool)
-    parser.add_argument('--val_sample_times', default=10, type=int)
+    parser.add_argument('--val_sample_times', nargs='+', type=int)
     parser.add_argument('--val_plot', default=False, type=bool)
     parser.add_argument('--val_plot_mode', default=1, type=int)
 

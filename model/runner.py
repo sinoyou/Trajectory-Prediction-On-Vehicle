@@ -133,12 +133,7 @@ class Trainer:
             if epoch > 0 and epoch % self.args.validate_every == 0:
                 checkpoint['model'] = self.model.state_dict()
                 checkpoint['optimizer'] = self.optimizer.state_dict()
-                feedback = self.validate_model(epoch=epoch, checkpoint=checkpoint)
-                self.best_eval_result = feedback['best_result']
-                # if cv_rec exist, update information
-                if cv_recorder:
-                    cv_recorder.add_evaluation_result(feedback['global_metrics'], epoch,
-                                                      valid_scene=self.args.val_scene)
+                self.validate_model(epoch=epoch, checkpoint=checkpoint, cv_recorder=cv_recorder)
 
             # print
             summary = {
@@ -167,44 +162,61 @@ class Trainer:
                 checkpoint['best_result'] = self.best_eval_result
                 checkpoint_path = os.path.join(self.args.save_dir,
                                                'checkpoint_{}_{}_{}'.format(epoch, self.args.model, ave_loss))
-                newest_path = os.path.join(self.args.save_dir, 'newest')
+                newest_path = os.path.join(self.args.save_dir, 'latest_checkpoint')
                 self.recorder.logger.info('Save {}'.format(checkpoint_path))
                 self.recorder.logger.info('Update latest checkpoint version.')
                 torch.save(checkpoint, checkpoint_path)
                 torch.save(checkpoint, newest_path)
                 self.recorder.logger.info('Done')
 
-    def validate_model(self, epoch, checkpoint):
+    def validate_model(self, epoch, checkpoint, cv_recorder):
         """
-        Validate model when training. Get ave_loss, final_loss, ade, fde
-        Plot trajectories on the tensor board.
+        Validate model when training.
+        1. One trained model can corresponds to multiple validation config on sample_times.
+        2. After each validation, result under single config will be used for updating best result.
         """
         # save current model parameters temporarily.
         checkpoint_path = os.path.join(self.args.save_dir, 'temp_checkpoint_val')
         torch.save(checkpoint, checkpoint_path)
 
-        # create Tester
-        val_dict = AttrDict({
-            'model': self.args.model,
-            'load_path': os.path.join(self.args.save_dir, 'temp_checkpoint_val'),
-            'obs_len': self.args.val_obs_len,
-            'pred_len': self.args.val_pred_len,
-            'sample_times': self.args.val_sample_times,
-            'use_sample': self.args.val_use_sample,
-            'test_dataset': self.args.val_dataset,
-            'train_leave': self.args.train_leave,
-            'test_scene': self.args.val_scene,
-            'silence': True,
-            'plot': self.args.val_plot,
-            'plot_mode': self.args.val_plot_mode,
-            'relative': self.args.relative,
-            'export_path': None,
-            'board_name': self.args.board_name,
-            'phase': self.args.val_phase
-        })
-        validator = Tester(val_dict, self.recorder)
-        feedback = validator.evaluate(step=epoch, best_result=self.best_eval_result)
-        return feedback
+        for sample_time in self.args.sample_times:
+            # create Tester
+            val_dict = AttrDict({
+                'model': self.args.model,
+                'load_path': os.path.join(self.args.save_dir, 'temp_checkpoint_val'),
+                'obs_len': self.args.val_obs_len,
+                'pred_len': self.args.val_pred_len,
+                'sample_times': sample_time,
+                'test_dataset': self.args.val_dataset,
+                'train_leave': self.args.train_leave,
+                'test_scene': self.args.val_scene,
+                'silence': True,
+                'plot': self.args.val_plot,
+                'plot_mode': self.args.val_plot_mode,
+                'relative': self.args.relative,
+                'export_path': None,
+                'board_name': self.args.board_name,
+                'phase': self.args.val_phase + '/sample_{}'.format(sample_time)
+            })
+            validator = Tester(val_dict, self.recorder)
+            feedback = validator.evaluate(step=epoch)
+
+            # evaluation result process
+            self.best_eval_result.setdefault(sample_time, dict())
+            for key, value in feedback['global_metrics']:
+                best_eval_sample = self.best_eval_result[sample_time]
+                if 'best_' + key in best_eval_sample.keys():
+                    best_eval_sample['best_' + key] = min(best_eval_sample['best_' + key], value)
+                else:
+                    best_eval_sample['best_' + key] = value
+            # cv recoder not None, then combine feedback and best result to record.
+            if cv_recorder:
+                temp = feedback['global_metrics'].copy()
+                for k, v in self.best_eval_result[sample_time]:
+                    temp[k] = v
+                cv_recorder.add_train_record(record=temp, epoch=epoch, train_leave=self.args.train_leave,
+                                             sample_time=sample_time)
+            return feedback
 
 
 class Tester:
@@ -226,9 +238,12 @@ class Tester:
         self.args_check()
 
     def args_check(self):
-        if not self.args.use_sample and self.args.sample_times > 1:
-            self.recorder.logger.info('Found not using sample, but sample times > 1. Auto turned to 1.')
-            self.args.sample_times = 1
+        if self.args.sample_times >= 1:
+            self.recorder.logger.info('AutoRegressive Mode: Sample')
+        elif self.args.sample_times == 0:
+            self.recorder.logger.info('AutoRegressive Mode: Biggest Likelihood.')
+        else:
+            raise Exception('Invalid args sample_times {}'.format(self.args.sample_times))
 
     def restore_model(self) -> torch.nn.Module:
         """
@@ -267,13 +282,12 @@ class Tester:
 
         return model
 
-    def evaluate(self, step=1, best_result=None):
+    def evaluate(self, step=1):
         """
         Evaluate Loaded Model with one-by-one case. Then calculate metrics and plot result.
         Global and Case metrics: ave_loss, final_loss, ave_l2, final_l2, ade, fde
         Hint: differences between l2 and destination error, l2 is based on relative dis while the other on absolute one.
         :param step: global evaluation step. (ex. in validation, it could be epoch and in test usually is 1)
-        :param best_result: contains best result externally, if None then evaluation result this time will be the best.
         """
         self.recorder.logger.info('### Begin Evaluation {}, {} test cases in total'.format(
             step, len(self.test_dataset))
@@ -289,8 +303,7 @@ class Tester:
                 x, y = self.model.evaluation_data_splitter(rel_data, self.args.pred_len)
                 result = self.model.inference(datax=x,
                                               pred_len=self.args.pred_len,
-                                              sample_times=self.args.sample_times,
-                                              use_sample=self.args.use_sample)
+                                              sample_times=self.args.sample_times)
                 pred_distribution, y_hat = result['sample_pred_distribution'], result['sample_y_hat']
 
                 # data post process
@@ -303,8 +316,7 @@ class Tester:
                 x, y = self.model.evaluation_data_splitter(data, self.args.pred_len)
                 result = self.model.inference(datax=x,
                                               pred_len=self.args.pred_len,
-                                              sample_times=self.args.sample_times,
-                                              use_sample=self.args.use_sample)
+                                              sample_times=self.args.sample_times)
                 pred_distribution, y_hat = result['sample_pred_distribution'], result['sample_y_hat']
 
                 abs_x = x
@@ -406,19 +418,6 @@ class Tester:
             self.recorder.writer.add_scalar('{}/{}'.format(self.args.phase, metric),
                                             global_metrics[metric], global_step=step)
 
-        # update best result and add best result to global_metrics
-        if best_result is None:
-            best_result = dict()
-        else:
-            best_result = best_result.copy()
-        for k, v in global_metrics.items():
-            if ('best_' + k) in best_result.keys():
-                best_result['best_' + k] = min(best_result['best_' + k], v)
-            else:
-                best_result['best_' + k] = v
-        for k, v in best_result.items():
-            global_metrics[k] = v
-
         # plot
         if self.args.plot:
             if self.model.loss == '2d_gaussian':
@@ -439,4 +438,4 @@ class Tester:
 
         self.recorder.logger.info('### End Evaluation')
 
-        return {'global_metrics': global_metrics, 'best_result': best_result}
+        return {'global_metrics': global_metrics}
