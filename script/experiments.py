@@ -377,14 +377,15 @@ if __name__ == '__main__':
     #    a. Use prefix to identify different batch experiments.
     #    b. All data in one batch experiment will be in stored in runs/prefix/ and save/prefix/
     # experiment prefix
-    prefix = '0518'
-    only_eval = True
+    prefix = '0519'
+    only_eval = False
     log_file = Recorder(os.path.join(runs_dir_root, prefix), board=False, logfile=True, stream=True)
     # 添加生成参数的规则
     argsMaker = ArgsMaker()
     argsMaker.add_arg_rule('model', ['seq2seq', 'vanilla'])
-    argsMaker.add_arg_rule('loss', ['2d_gaussian', 'mixed'])
-    argsMaker.add_arg_rule('val_sample_times', [[0, 10, 20]], 'sample')
+    argsMaker.add_arg_rule(['loss', 'val_sample_times'], [('mixed', [0]), ('2d_gaussian', [0, 10, 20])], 'Lo_Sam')
+    argsMaker.add_arg_rule(['embedding_size', 'cell_size'], [(64, 128), (32, 64), (16, 32), (8, 16)], brief='ebd_cell')
+    argsMaker.add_arg_rule(['relative'], [False, True], brief='rel')
 
     blocker = ArgsBlocker()
     candidates = argsMaker.making_args_candidates().items()
