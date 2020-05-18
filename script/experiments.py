@@ -30,13 +30,15 @@ cross_weights = {0: 0.014705882352941176,
                  17: 0.05392156862745098,
                  18: 0.0,
                  19: 0.3431372549019608,
-                 20: 0.0}
+                 20: 0.0
+                 }
 cross_scene = [0, 1, 2, 4, 5, 7, 9, 10, 11, 12, 13, 14, 15, 16, 17, 19]
-# cross_scene = [0, 1, 13, 16, 19]
+# cross_scene = [0, 1, 2, 4]
 cross_metrics = ['ave_loss', 'ade', 'fde', 'min_ade', 'min_fde', 'best_ave_loss',
                  'best_ade', 'best_fde', 'best_min_ade', 'best_min_fde',
                  'ade_x', 'ade_y', 'fde_x', 'fde_y', 'min_ade_x', 'min_ade_y', 'min_fde_x', 'min_fde_y']
-only_eval_model_name = 'latest_checkpoint.ckpt'
+# only_eval_model_name = 'latest_checkpoint.ckpt'
+only_eval_model_name = 'temp_checkpoint_val'
 
 
 class ArgsMaker:
@@ -164,8 +166,8 @@ class ArgsBlocker:
     def add_block_rule(self, rule):
         """
         Add block rule to black list.
-        If an args configuration meeting all value in rule, then blocked.
-        :param rule: dict()
+        If an args configuration meeting rule, then blocked.
+        :param rule: func()
         """
         self.black_list.append(rule)
 
@@ -175,16 +177,8 @@ class ArgsBlocker:
         :param attr: generated args
         :return: true/false
         """
-
-        def in_blocked_rule(rule, value):
-            if isinstance(rule, list):
-                return value in rule
-            else:
-                return value == rule
-
         for rule in self.black_list:
-            meet_args = [key for key, value in rule.items() if in_blocked_rule(attr[key], value)]
-            if len(meet_args) == len(rule.keys()):
+            if rule(attr):
                 return True
         return False
 
@@ -242,7 +236,7 @@ class CrossValidationRecorder:
         # loop different sample configuration
         sample_times = self.eval_records['sample_time'].unique()
         for sample_time in sample_times:
-            data = self.eval_records[self.eval_records['sample_time'] == sample_times]
+            data = self.eval_records[self.eval_records['sample_time'] == sample_time]
             # calculate by metrics
             for metric in metrics:
                 data_no_nan = data[~data[metric].isna()]  # get data without nan in 'metric'
@@ -383,17 +377,16 @@ if __name__ == '__main__':
     #    a. Use prefix to identify different batch experiments.
     #    b. All data in one batch experiment will be in stored in runs/prefix/ and save/prefix/
     # experiment prefix
-    prefix = '0515'
-    only_eval = False
+    prefix = '0518'
+    only_eval = True
     log_file = Recorder(os.path.join(runs_dir_root, prefix), board=False, logfile=True, stream=True)
     # 添加生成参数的规则
     argsMaker = ArgsMaker()
     argsMaker.add_arg_rule('model', ['seq2seq', 'vanilla'])
     argsMaker.add_arg_rule('loss', ['2d_gaussian', 'mixed'])
-    argsMaker.add_arg_rule('val_sample_times', [0, 5, 10, 20], 'sample')
+    argsMaker.add_arg_rule('val_sample_times', [[0, 10, 20]], 'sample')
 
     blocker = ArgsBlocker()
-    blocker.add_block_rule({'loss': 'mixed', 'val_sample_times': [5, 10, 20]})
     candidates = argsMaker.making_args_candidates().items()
     for index, item in enumerate(candidates):
         if blocker.is_blocked(item[1]):

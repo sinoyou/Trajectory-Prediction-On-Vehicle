@@ -48,12 +48,12 @@ def l2_loss(pred_traj, pred_traj_gt):
 def l1_loss(pred_traj, pred_traj_gt):
     """
     Input:
-    :param pred_traj: Tensor of shape (batch, seq_len, _)/(batch, seq_len). Predicted trajectory along one dimension.
-    :param pred_traj_gt: Tensor of shape (batch, seq_len, _)/(batch, seq_len).
+    :param pred_traj: Tensor of shape (batch, seq_len)/(batch, seq_len). Predicted trajectory along one dimension.
+    :param pred_traj_gt: Tensor of shape (batch, seq_len)/(batch, seq_len).
                          Groud truth predictions along one dimension.
     :return: l1 loss |pred_traj - pred_traj_gt|
     """
-    return torch.sum(torch.abs(pred_traj - pred_traj_gt), dim=2)
+    return torch.sum(torch.abs(pred_traj - pred_traj_gt), dim=2, keepdim=True)
 
 
 def neg_likelihood_gaussian_pdf(gaussian_output, target):

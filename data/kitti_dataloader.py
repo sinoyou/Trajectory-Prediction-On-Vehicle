@@ -150,8 +150,7 @@ class SingleKittiDataLoader:
         for target in self.norm_targets:
             self.norm_metric[target + '_mean'] = self.train_data[target].mean()
             self.norm_metric[target + '_std'] = self.train_data[target].std()
-        self.recorder.logger.info('Norm Metric')
-        self.recorder.logger.info(self.norm_metric)
+        self.recorder.logger.info('Norm Metric {}'.format(self.norm_metric))
 
     @staticmethod
     def rel_to_abs(y_hat, **kwargs):
