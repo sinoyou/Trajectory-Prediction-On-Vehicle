@@ -85,7 +85,7 @@ class Trainer:
 
         return model, optimizer
 
-    def train_model(self, cv_recorder=None):
+    def train_model(self, cv_recorder=None, only_eval=False):
         """
         Train model
         """
@@ -93,6 +93,15 @@ class Trainer:
         checkpoint['args'] = self.args
         if not os.path.exists(self.args.save_dir):
             os.makedirs(self.args.save_dir)
+
+        # Only Evaluation Mode, restored model will be directly used for evaluation
+        # Hint: this function is used together with experiments.py/cross_validation. Other purposes are not recommended.
+        if only_eval:
+            self.recorder.logger.info('>>> Only Evaluation Mode')
+            checkpoint['model'] = self.model.state_dict()
+            checkpoint['optimizer'] = self.optimizer.state_dict()
+            self.validate_model(epoch=self.pre_epoch, checkpoint=checkpoint, cv_recorder=cv_recorder)
+            return
 
         self.recorder.logger.info(' >>> Starting training')
 
@@ -161,8 +170,8 @@ class Trainer:
                 checkpoint['epoch'] = epoch
                 checkpoint['best_result'] = self.best_eval_result
                 checkpoint_path = os.path.join(self.args.save_dir,
-                                               'checkpoint_{}_{}_{}'.format(epoch, self.args.model, ave_loss))
-                newest_path = os.path.join(self.args.save_dir, 'latest_checkpoint')
+                                               'checkpoint_{}_{}.ckpt'.format(epoch, self.args.model))
+                newest_path = os.path.join(self.args.save_dir, 'latest_checkpoint.ckpt')
                 self.recorder.logger.info('Save {}'.format(checkpoint_path))
                 self.recorder.logger.info('Update latest checkpoint version.')
                 torch.save(checkpoint, checkpoint_path)
@@ -180,6 +189,7 @@ class Trainer:
         torch.save(checkpoint, checkpoint_path)
 
         for sample_time in self.args.sample_times:
+            self.recorder.logger.info('validating sample_times = {}'.format(sample_time))
             # create Tester
             val_dict = AttrDict({
                 'model': self.args.model,

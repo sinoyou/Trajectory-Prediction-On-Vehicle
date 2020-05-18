@@ -36,6 +36,7 @@ cross_scene = [0, 1, 2, 4, 5, 7, 9, 10, 11, 12, 13, 14, 15, 16, 17, 19]
 cross_metrics = ['ave_loss', 'ade', 'fde', 'min_ade', 'min_fde', 'best_ave_loss',
                  'best_ade', 'best_fde', 'best_min_ade', 'best_min_fde',
                  'ade_x', 'ade_y', 'fde_x', 'fde_y', 'min_ade_x', 'min_ade_y', 'min_fde_x', 'min_fde_y']
+only_eval_model_name = 'latest_checkpoint.ckpt'
 
 
 class ArgsMaker:
@@ -174,8 +175,15 @@ class ArgsBlocker:
         :param attr: generated args
         :return: true/false
         """
+
+        def in_blocked_rule(rule, value):
+            if isinstance(rule, list):
+                return value in rule
+            else:
+                return value == rule
+
         for rule in self.black_list:
-            meet_args = [key for key, value in rule.items() if attr[key] == value]
+            meet_args = [key for key, value in rule.items() if in_blocked_rule(attr[key], value)]
             if len(meet_args) == len(rule.keys()):
                 return True
         return False
@@ -300,7 +308,7 @@ class TaskRunner:
         # initial recorder and trainer
         self.recorder = Recorder(summary_path=task_attr.board_name, logfile=True, stream=False)
 
-    def run(self, global_recorder, cross_validation):
+    def run(self, global_recorder, cross_validation, only_eval):
         # if cv is True, then cv scenes are set
         if cross_validation:
             if self.task_attr.train_leave or self.task_attr.val_scene:
@@ -322,10 +330,16 @@ class TaskRunner:
             _task_attr.val_scene = scene_pair[1]
             _task_attr.phase = 'leave_{}_teston_{}'.format(scene_pair[0], scene_pair[1])
             _task_attr.val_phase = 'leave_{}_teston_{}'.format(scene_pair[0], scene_pair[1])
+
             # in cv mode, more sub dirs will be made under current save dir.
             if cross_validation:
                 _task_attr.save_dir = os.path.join(_task_attr.save_dir,
                                                    'leave_{}_test_{}'.format(scene_pair[0], scene_pair[1]))
+
+            # in only evaluation mode, trained model needs to be restored.
+            if only_eval:
+                _task_attr.restore_dir = os.path.join(_task_attr.save_dir, only_eval_model_name)
+
             try:
                 self.recorder.logger.info(_task_attr)
                 trainer = Trainer(_task_attr, self.recorder)
@@ -333,12 +347,12 @@ class TaskRunner:
                     global_recorder.logger.info('CV Running @ leave {} and val {}. Save @ {}, Runs+Log @ {}'.format(
                         _task_attr.train_leave, _task_attr.val_scene, _task_attr.save_dir, _task_attr.board_name
                     ))
-                    trainer.train_model(cv_recorder=cv_rec)
+                    trainer.train_model(cv_recorder=cv_rec, only_eval=only_eval)
                 else:
                     global_recorder.logger.info('Normal Running @ leave {} and val {}. Save @ {}, Runs+Log @ {}'.format(
                         _task_attr.train_leave, _task_attr.val_scene, _task_attr.save_dir, _task_attr.board_name
                     ))
-                    trainer.train_model()
+                    trainer.train_model(only_eval=only_eval)
 
                 global_recorder.logger.info('Task Ends Successfully. Save Dir = {}'.format(_task_attr.save_dir))
                 self.recorder.logger.info('Task Ends Successfully. Save Dir = {} \n\n\n'.format(_task_attr.save_dir))
@@ -370,16 +384,16 @@ if __name__ == '__main__':
     #    b. All data in one batch experiment will be in stored in runs/prefix/ and save/prefix/
     # experiment prefix
     prefix = '0515'
+    only_eval = False
     log_file = Recorder(os.path.join(runs_dir_root, prefix), board=False, logfile=True, stream=True)
     # 添加生成参数的规则
     argsMaker = ArgsMaker()
     argsMaker.add_arg_rule('model', ['seq2seq', 'vanilla'])
     argsMaker.add_arg_rule('loss', ['2d_gaussian', 'mixed'])
-    argsMaker.add_arg_rule(['val_use_sample', 'val_sample_times'], [[False, 1]] + [[True, i] for i in [5, 10, 20]],
-                           'sample')
+    argsMaker.add_arg_rule('val_sample_times', [0, 5, 10, 20], 'sample')
 
     blocker = ArgsBlocker()
-    blocker.add_block_rule({'loss': 'mixed', 'val_use_sample': True})
+    blocker.add_block_rule({'loss': 'mixed', 'val_sample_times': [5, 10, 20]})
     candidates = argsMaker.making_args_candidates().items()
     for index, item in enumerate(candidates):
         if blocker.is_blocked(item[1]):
@@ -387,5 +401,5 @@ if __name__ == '__main__':
         else:
             log_file.logger.info('{}/{} pass '.format(index + 1, len(candidates)) + str(item[0]))
             task_runner = TaskRunner(prefix, item[1])
-            task_runner.run(log_file, cross_validation=True)
+            task_runner.run(log_file, cross_validation=True, only_eval=only_eval)
     log_file.close()
