@@ -176,14 +176,13 @@ class VanillaLSTM(torch.nn.Module):
 
                 # predict iterative
                 for itr in range(pred_len):
-                    mixed_output[:, itr, :] = get_mixed(output)
+                    mixed_output[:, itr: itr + 1, :] = get_mixed(output)
                     y_hat[:, itr, :] = mixed_output[:, itr, 0:2]
 
                     if itr == pred_len - 1:
                         break
 
-                    itr_x = torch.zeros((batch_size, 1, 2), device=device)
-                    itr_x[:, :, :] = y_hat[:, itr, :]
+                    itr_x = torch.unsqueeze(y_hat[:, itr, :], dim=-2)
                     output, hc = self(itr_x, hc)
 
                 sample_distribution.append(mixed_output)
