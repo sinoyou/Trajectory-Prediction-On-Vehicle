@@ -379,6 +379,7 @@ if __name__ == '__main__':
     prefix = '0519'
     only_eval = False
     log_file = Recorder(os.path.join(runs_dir_root, prefix), board=False, logfile=True, stream=True)
+
     # 添加生成参数的规则
     argsMaker = ArgsMaker()
     argsMaker.add_arg_rule('model', ['seq2seq', 'vanilla'])
