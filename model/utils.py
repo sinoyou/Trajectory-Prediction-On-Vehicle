@@ -1,7 +1,7 @@
 from torch import nn
 import torch
 import numpy as np
-
+from torch.distributions.multivariate_normal import MultivariateNormal
 
 def make_mlp(dim_list, activation='relu', batch_norm=False, dropout=0):
     """Factory for multi-layer perceptron."""
@@ -42,7 +42,7 @@ def l2_loss(pred_traj, pred_traj_gt):
     - loss: l2 loss [batch, seq_len, 1]
     """
     loss = (pred_traj_gt - pred_traj) ** 2
-    return torch.sqrt(torch.sum(loss, dim=2, keepdim=True))
+    return torch.sqrt(torch.sum(loss, dim=-1, keepdim=True))
 
 
 def l1_loss(pred_traj, pred_traj_gt):
@@ -53,15 +53,15 @@ def l1_loss(pred_traj, pred_traj_gt):
                          Groud truth predictions along one dimension.
     :return: l1 loss |pred_traj - pred_traj_gt|
     """
-    return torch.sum(torch.abs(pred_traj - pred_traj_gt), dim=2, keepdim=True)
+    return torch.sum(torch.abs(pred_traj - pred_traj_gt), dim=-1, keepdim=True)
 
 
 def neg_likelihood_gaussian_pdf(gaussian_output, target):
     """
     Negative log likelihood loss based on 2D Gaussian Distribution
-    :param gaussian_output: Tensor[batch_size, pred_length, 5] [mu_x, mu_y, sigma_x, sigma_y, cor]
-    :param target: Tensor[batch_size, pred_length, 2]
-    :return: loss -> Tensor[batch_size, pred_length, 1]
+    :param gaussian_output: Tensor[..., pred_length, 5] [mu_x, mu_y, sigma_x, sigma_y, cor]
+    :param target: Tensor[..., pred_length, 2]
+    :return: loss -> Tensor[..., pred_length, 1]
     """
     mu_x, mu_y, sigma_x, sigma_y, cor = torch.split(gaussian_output, 1, dim=2)
     tar_x, tar_y = torch.split(target, 1, dim=2)
@@ -100,9 +100,7 @@ def neg_likelihood_gaussian_pdf(gaussian_output, target):
 
     loss = - torch.log(pdf_ave)
 
-    assert loss.shape[0] == gaussian_output.shape[0]
-    assert loss.shape[1] == gaussian_output.shape[1]
-    assert loss.shape[2] == 1
+    assert loss.shape[-1] == 1
 
     return loss
 
@@ -143,9 +141,7 @@ def neg_likelihood_mixed_pdf(mixed_output, target, phi=2):
 
     loss = - (torch.log(gaussian_pdf_clip) + phi * torch.log(laplace_pdf_clip))
 
-    assert loss.shape[0] == mixed_output.shape[0]
-    assert loss.shape[1] == mixed_output.shape[1]
-    assert loss.shape[2] == 1
+    assert loss.shape[-1] == 1
 
     return loss
 
@@ -170,12 +166,14 @@ def gaussian_sampler(mux, muy, sx, sy, rho):
     :return: one 2D point (x, y)
     """
     # Extract mean
-    mean = (mux, muy)
+    mean = torch.cat([mux, muy], dim=-1)   # [batch_size, 2]
     # Extract covariance matrix
-    cov = ((sx * sx, rho * sx * sy), (rho * sx * sy, sy * sy))
+    cov = torch.cat([sx * sx, rho * sx * sy, rho * sx * sy, sy * sy], dim=-1)  # [batch_size, 2, 2]
+    cov = torch.reshape(cov, (cov.shape[0], 2, 2))
+    gaussian_dist = MultivariateNormal(loc=mean, covariance_matrix=cov)
+
     # Sample a point from the multiplytivariate normal distribution
-    x = np.random.multivariate_normal(mean, cov, size=1)  # x.shape = (1, 2)
-    return x[0][0], x[0][1]
+    return gaussian_dist.sample()
 
 
 def get_mixed(model_output):
