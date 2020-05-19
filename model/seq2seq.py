@@ -131,10 +131,11 @@ class Seq2SeqLSTM(torch.nn.Module):
     def inference(self, datax, pred_len, sample_times):
         """
         During evaluation, use trained model to inference.
-        :param datax: obs data [1, obs_len, 2]
+        :param datax: obs data [batch_size, obs_len, 2]
         :param pred_len: length of prediction
         :param sample_times: times of sampling trajectories (if 0, means not using sample)
-        :return: gaussian_output [sample_times, pred_len, 5], location_output[sample_times, pred_len, 2]
+        :return: gaussian_output [batch_size, sample_times, pred_len, 5],
+                 location_output[batch_size, sample_times, pred_len, 2]
         """
         sample_distribution = list()
         sample_location = list()
@@ -152,11 +153,11 @@ class Seq2SeqLSTM(torch.nn.Module):
         def sample_output_parser(x):
             """
             Only used in inference
-            :param x: (1, 5)
+            :param x: (batch_size, 5)
             """
             x = get_2d_gaussian(x)
             sample_location = gaussian_sampler(x[..., 0], x[..., 1], x[..., 2], x[..., 3], x[..., 4])
-            return torch.tensor(sample_location, device=x.device).view(1, 2)
+            return torch.tensor(sample_location, device=x.device)
 
         with torch.no_grad():
             if self.loss == '2d_gaussian':
@@ -184,6 +185,6 @@ class Seq2SeqLSTM(torch.nn.Module):
                 raise Exception('No inference support for {}'.format(self.loss))
 
         return {
-            'sample_pred_distribution': torch.cat(sample_distribution, dim=0),
-            'sample_y_hat': torch.cat(sample_location, dim=0)
+            'sample_pred_distribution': torch.cat(sample_distribution, dim=0).permute(1, 0, 2, 3),
+            'sample_y_hat': torch.cat(sample_location, dim=0).permute(1, 0, 2, 3)
         }
