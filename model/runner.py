@@ -9,6 +9,7 @@ from tqdm import tqdm
 # from data.dataloader import KittiDataLoader
 from data.kitti_dataloader import SingleKittiDataLoader
 from script.cuda import get_device, to_device
+from script.tools import rel_distribution_to_abs_distribution
 from model.utils import l2_loss, l1_loss
 from model.vanilla import VanillaLSTM
 from model.seq2seq import Seq2SeqLSTM
@@ -318,29 +319,32 @@ class Tester:
                 result = self.model.inference(datax=batch_x,
                                               pred_len=self.args.pred_len,
                                               sample_times=self.args.sample_times)
-                batch_pred_distribution, batch_y_hat = result['sample_pred_distribution'], result['sample_y_hat']
+                batch_pred_distb, batch_y_hat = result['sample_pred_distribution'], result['sample_y_hat']
 
                 # data post process
                 batch_abs_x, batch_abs_y = self.model.evaluation_data_splitter(batch_data, self.args.pred_len)
                 # post process relative to absolute
                 batch_abs_y_hat = self.test_dataset.rel_to_abs(batch_y_hat,
                                                                start=torch.unsqueeze(batch_abs_x[:, -1, :], dim=1))
-                batch_loss = self.model.get_loss(distribution=batch_pred_distribution, y_gt=batch_y)  # norm scale
+                batch_loss = self.model.get_loss(distribution=batch_pred_distb, y_gt=batch_y)  # norm scale
+                batch_abs_pred_distb = rel_distribution_to_abs_distribution(self.model.get_loss_type(),
+                                                                            batch_pred_distb,
+                                                                            batch_abs_y_hat[..., 0, :])  # raw scale
 
             else:
                 batch_x, batch_y = self.model.evaluation_data_splitter(batch_data, self.args.pred_len)
                 result = self.model.inference(datax=batch_x,
                                               pred_len=self.args.pred_len,
                                               sample_times=self.args.sample_times)
-                batch_pred_distribution, batch_y_hat = result['sample_pred_distribution'], result['sample_y_hat']
+                batch_pred_distb, batch_y_hat = result['sample_pred_distribution'], result['sample_y_hat']
 
                 batch_abs_x = batch_x
                 batch_abs_y = batch_y
                 batch_abs_y_hat = batch_y_hat
-                batch_loss = self.model.get_loss(distribution=batch_pred_distribution, y_gt=batch_y)  # norm scale
+                batch_loss = self.model.get_loss(distribution=batch_pred_distb, y_gt=batch_y)  # norm scale
+                batch_abs_pred_distb = batch_pred_distb
 
             # HINT: batch_x shape [batch_size, sample_times, length, ? ]
-
             # transform abs_* & pred_distribution to raw scale.
             # Only when used data is absolute, we need to transform it into raw scale.
             if not self.args.relative:
@@ -350,45 +354,66 @@ class Tester:
                 batch_abs_x = self.test_dataset.norm_to_raw(batch_abs_x)
                 batch_abs_y = self.test_dataset.norm_to_raw(batch_abs_y)
                 batch_abs_y_hat = self.test_dataset.norm_to_raw(batch_abs_y_hat)
-                batch_pred_distribution = self.test_dataset.norm_to_raw(batch_pred_distribution)
+                batch_pred_distb = self.test_dataset.norm_to_raw(batch_pred_distb)
+                batch_abs_pred_distb = self.test_dataset.norm_to_raw(batch_abs_pred_distb)
 
             # metric calculate
-            l2 = l2_loss(batch_y_hat, batch_y)  # norm scale
-            euler = l2_loss(batch_abs_y_hat, batch_abs_y)  # raw scale
-            l1_x = l1_loss(torch.unsqueeze(batch_abs_y_hat[..., 0], dim=2), torch.unsqueeze(batch_abs_y[..., 0], dim=2))
-            l1_y = l1_loss(torch.unsqueeze(batch_abs_y_hat[..., 1], dim=2), torch.unsqueeze(batch_abs_y[..., 1], dim=2))
+            batch_likelihood = self.model.get_loss(distribution=batch_abs_pred_distb,
+                                                   y_gt=batch_abs_y, keep=True)  # raw scale
+            batch_l2 = l2_loss(batch_y_hat, batch_y)  # norm scale
+            batch_euler = l2_loss(batch_abs_y_hat, batch_abs_y)  # raw scale
+            batch_l1_x = l1_loss(torch.unsqueeze(batch_abs_y_hat[..., 0], dim=2),
+                                 torch.unsqueeze(batch_abs_y[..., 0], dim=2))
+            batch_l1_y = l1_loss(torch.unsqueeze(batch_abs_y_hat[..., 1], dim=2),
+                                 torch.unsqueeze(batch_abs_y[..., 1], dim=2))
 
             for idx in range(batch_abs_y_hat.shape[0]):
                 x, y, y_hat = batch_x[idx, ...], batch_y[idx, ...], batch_y_hat[idx, ...]
                 abs_x, abs_y, abs_y_hat = batch_abs_x[idx, ...], batch_abs_y[idx, ...], batch_abs_y_hat[idx, ...]
                 loss = batch_loss[idx, ...]
-                pred_distribution = batch_pred_distribution[idx, ...]
+                pred_distribution = batch_pred_distb[idx, ...]
+                l2 = batch_l2[idx, ...]
+                l1_x = batch_l1_x[idx, ...]
+                l1_y = batch_l1_y[idx, ...]
+                euler = batch_euler[idx, ...]
+                likelihood = batch_likelihood[idx, ...]
 
                 # average metrics calculation
                 # Hint: when mode is absolute, abs_? and ? are the same, so L2 loss and destination error as well.
                 samples_count = loss.shape[0]
-                ave_loss = torch.sum(loss) / (self.args.pred_len * samples_count)
-                first_loss = torch.sum(loss[:, 0, :]) / samples_count
-                final_loss = torch.sum(loss[:, -1, :]) / samples_count
-                ave_l2 = torch.sum(l2) / (self.args.pred_len * samples_count)
-                final_l2 = torch.sum(l2[:, -1, :]) / samples_count
-                ade = torch.sum(euler) / (self.args.pred_len * samples_count)
-                fde = torch.sum(euler[:, -1, :]) / samples_count
+                min_loss = torch.min(torch.sum(loss, dim=[1, 2])) / self.args.pred_len
+                min_first_loss = torch.min(loss[:, 0, :])
+                min_final_loss = torch.min(loss[:, -1, :])
+                min_al2 = torch.min(torch.sum(l2, dim=[1, 2])) / self.args.pred_len
+                min_fl2 = torch.min(torch.sum(l2[:, -1, :]))
+                # ade = torch.sum(euler) / (self.args.pred_len * samples_count)
+                # fde = torch.sum(euler[:, -1, :]) / samples_count
                 min_ade = torch.min(torch.sum(euler, dim=[1, 2]) / self.args.pred_len)
                 min_fde = torch.min(euler[:, -1, :])
-                ade_x = torch.sum(l1_x) / (self.args.pred_len * samples_count)
-                ade_y = torch.sum(l1_y) / (self.args.pred_len * samples_count)
-                fde_x = torch.sum(l1_x[:, -1, :]) / samples_count
-                fde_y = torch.sum(l1_y[:, -1, :]) / samples_count
+                # ade_x = torch.sum(l1_x) / (self.args.pred_len * samples_count)
+                # ade_y = torch.sum(l1_y) / (self.args.pred_len * samples_count)
+                # fde_x = torch.sum(l1_x[:, -1, :]) / samples_count
+                # fde_y = torch.sum(l1_y[:, -1, :]) / samples_count
                 min_ade_x = torch.min(torch.sum(l1_x, dim=[1, 2]) / self.args.pred_len)
                 min_ade_y = torch.min(torch.sum(l1_y, dim=[1, 2]) / self.args.pred_len)
                 min_fde_x = torch.min(l1_x[:, -1, :])
                 min_fde_y = torch.min(l1_y[:, -1, :])
+                if likelihood.shape[-1] == 2:
+                    like_x, like_y = torch.split(likelihood, 1, dim=-1)
+                    min_ll = torch.min(torch.sum(like_x, dim=[1, 2])) / self.args.pred_len, torch.min(
+                        torch.sum(like_y, dim=[1, 2])) / self.args.pred_len
+                    min_first_ll = torch.min(like_x[:, 0, :]), torch.min(like_y[:, 0, :])
+                    min_final_ll = torch.min(like_x[:, -1, :]), torch.min(like_y[:, -1, :])
+                else:
+                    min_ll = torch.min(torch.sum(likelihood, dim=[1, 2])) / self.args.pred_len
+                    min_first_ll = torch.min(likelihood[:, 0, :])
+                    min_final_ll = torch.min(likelihood[:, -1, :])
 
-                msg1 = '{}_AveLoss_{:.3}_adex_{:.3}_adey_{:.3}_fdex_{:.3}_fdey_{:.3}'.format(
-                    t, ave_loss, ade_x, ade_y, fde_x, fde_y)
-                msg2 = '{}_Ade_{:.3}_Fde_{:.3}_MAde_{:.3f}_MFde_{:.3f}'.format(
-                    t, ade, fde, min_ade, min_fde)
+                msg1 = '{}_MLoss_{:.3}_MAde_{:.3f}_MFde_{:.3f}'.format(
+                    t, min_loss, min_ade, min_fde)
+                msg2 = 'MAdeX_{:.3f}_MAdey_{:.3f}_MFdeX_{:.3f}_MFdeY_{:.3f}'.format(
+                    t, min_ade_x, min_ade_y, min_fde_x, min_fde_y)
+
                 if not self.args.silence:
                     self.recorder.logger.info(msg1 + "_" + msg2)
 
@@ -406,23 +431,34 @@ class Tester:
                 record['abs_y_hat'] = abs_y_hat.cpu().numpy()
                 record['pred_distribution'] = pred_distribution.cpu().numpy()
 
-                record['ave_loss'] = ave_loss.cpu().numpy()
-                record['final_loss'] = final_loss.cpu().numpy()
-                record['first_loss'] = first_loss.cpu().numpy()
-                record['ave_l2'] = ave_l2.cpu().numpy()
-                record['final_l2'] = final_l2.cpu().numpy()
-                record['ade'] = ade.cpu().numpy()
-                record['fde'] = fde.cpu().numpy()
+                record['min_loss'] = min_loss.cpu().numpy()
+                record['min_final_loss'] = min_final_loss.cpu().numpy()
+                record['min_first_loss'] = min_first_loss.cpu().numpy()
+                record['min_al2'] = min_al2.cpu().numpy()
+                record['min_fl2'] = min_fl2.cpu().numpy()
+                # record['ade'] = ade.cpu().numpy()
+                # record['fde'] = fde.cpu().numpy()
                 record['min_ade'] = min_ade.cpu().numpy()
                 record['min_fde'] = min_fde.cpu().numpy()
-                record['ade_x'] = ade_x.cpu().numpy()
-                record['ade_y'] = ade_y.cpu().numpy()
-                record['fde_x'] = fde_x.cpu().numpy()
-                record['fde_y'] = fde_y.cpu().numpy()
+                # record['ade_x'] = ade_x.cpu().numpy()
+                # record['ade_y'] = ade_y.cpu().numpy()
+                # record['fde_x'] = fde_x.cpu().numpy()
+                # record['fde_y'] = fde_y.cpu().numpy()
                 record['min_ade_x'] = min_ade_x.cpu().numpy()
                 record['min_ade_y'] = min_ade_y.cpu().numpy()
                 record['min_fde_x'] = min_fde_x.cpu().numpy()
                 record['min_fde_y'] = min_fde_y.cpu().numpy()
+                if likelihood.shape[-1] == 2:
+                    record['min_ll_x'] = min_ll[0]
+                    record['min_first_ll_x'] = min_first_ll[0]
+                    record['min_final_ll_x'] = min_final_ll[0]
+                    record['min_ll_y'] = min_ll[1]
+                    record['min_first_ll_y'] = min_first_ll[1]
+                    record['min_final_ll_y'] = min_final_ll[1]
+                else:
+                    record['min_ll'] = min_ll
+                    record['min_first_ll'] = min_first_ll
+                    record['min_final_ll'] = min_final_ll
 
                 save_list.append(record)
 
@@ -430,8 +466,14 @@ class Tester:
 
         # globally average metrics calculation
         self.recorder.logger.info('Calculation of Global Metrics.')
-        metric_list = ['ave_loss', 'ade', 'fde', 'ade_x', 'ade_y', 'fde_x', 'fde_y',
+        metric_list = ['min_loss', 'min_first_loss', 'min_final_loss',
                        'min_ade', 'min_fde', 'min_ade_x', 'min_ade_y', 'min_fde_x', 'min_fde_y']
+        if 'min_ll_x' in save_list[0].keys():
+            metric_list = metric_list + ['min_ll_x', 'min_first_ll_x', 'min_final_ll_x',
+                                         'min_ll_y', 'min_first_ll_y', 'min_final_ll_y']
+        else:
+            metric_list = metric_list + ['min_ll', 'min_first_ll', 'min_final_ll']
+
         global_metrics = dict()
         for metric in metric_list:
             temp = list()
@@ -447,11 +489,11 @@ class Tester:
             if self.model.loss == '2d_gaussian':
                 self.recorder.logger.info('Plot trajectory')
                 self.recorder.plot_trajectory(save_list, step=step, cat_point=self.args.obs_len - 1,
-                                              mode=self.args.plot_mode, relavtive=self.args.relative)
+                                              mode=self.args.plot_mode, relative=self.args.relative)
             elif self.model.loss == 'mixed' and self.args.plot_mode == 1:
                 self.recorder.logger.info('Plot trajectory')
                 self.recorder.plot_trajectory(save_list, step=step, cat_point=self.args.obs_len - 1,
-                                              mode=self.args.plot_mode, relavtive=self.args.relative)
+                                              mode=self.args.plot_mode, relative=self.args.relative)
             else:
                 self.recorder.logger.info('[SKIP PLOT] No support for loss {}'.format(self.model.loss))
 
