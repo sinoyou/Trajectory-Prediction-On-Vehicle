@@ -32,7 +32,7 @@ cross_weights = {0: 0.014705882352941176,
                  19: 0.3431372549019608,
                  20: 0.0
                  }
-cross_scene = [0, 1, 2, 4, 5, 7, 9, 10, 11, 12, 13, 14, 15, 16, 17, 19]
+cross_scene = [19, 17, 16, 15, 14, 13, 12, 11, 10, 9, 7, 5, 4, 2, 1, 0]
 cross_metrics = ['min_loss', 'min_first_loss', 'min_final_loss',
                  'min_ade', 'min_fde', 'min_ade_x', 'min_ade_y', 'min_fde_x', 'min_fde_y',
                  'min_l2', 'min_final_l2',
@@ -70,7 +70,7 @@ class ArgsMaker:
             'num_epochs': 401,  # debug!!!
             'learning_rate': 1e-3,
             'clip_threshold': 1.5,
-            'validate_every': 30,  # debug!!!
+            'validate_every': 20,  # debug!!!
             'weight_decay': 5e-5,
             # log
             'print_every': 1,
@@ -78,7 +78,7 @@ class ArgsMaker:
             'board_name': None,  # missing
             # load and save
             'save_dir': None,  # missing
-            'save_every': 30,  # debug!!!
+            'save_every': 20,  # debug!!!
             'restore_dir': None,
             # validation
             'val_dataset': '../data/kitti-all-label02.csv',
@@ -143,7 +143,7 @@ class ArgsMaker:
                         tag = tag + '_' + bname
                 for name in names:
                     tag = tag + '_{}'.format(args[name])
-                tag = str.strip(tag)
+                tag = tag.replace(' ', '')
             candidates[tag] = args.copy()
             return
 
@@ -389,8 +389,8 @@ if __name__ == '__main__':
     # 添加生成参数的规则
     argsMaker = ArgsMaker()
     argsMaker.add_arg_rule('model', ['seq2seq', 'vanilla'])
-    argsMaker.add_arg_rule(['loss', 'val_sample_times'], [('mixed', [0]), ('2d_gaussian', [0, 1, 10, 20])], 'Lo_Sam')
-    argsMaker.add_arg_rule(['embedding_size', 'cell_size'], [(64, 128), (32, 64), (16, 32)], brief='ebd_cell')
+    argsMaker.add_arg_rule(['loss', 'val_sample_times'], [('2d_gaussian', [0, 1, 10, 20]), ('mixed', [0])], 'Lo_Sam')
+    argsMaker.add_arg_rule(['embedding_size', 'cell_size'], [(64, 128), (32, 64), (16, 32), (8, 16)], brief='ebd_cell')
     # argsMaker.add_arg_rule(['embedding_size', 'cell_size'], [(64, 128)], brief='ebd_cell')
     argsMaker.add_arg_rule('relative', [False, True], brief='rel')
 
