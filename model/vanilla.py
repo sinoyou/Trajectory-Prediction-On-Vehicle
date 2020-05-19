@@ -143,23 +143,24 @@ class VanillaLSTM(torch.nn.Module):
 
                     # initial hidden state
                     output, hc = self(datax, hc=None)
-                    output = torch.unsqueeze(output[:, -1, :], dim=1)
+                    output = torch.unsqueeze(output[:, -1, :], dim=-2)
 
                     # predict iterative
                     for itr in range(pred_len):
-                        gaussian_output[:, itr, :] = get_2d_gaussian(output)
+                        gaussian_output[:, itr:itr + 1, :] = get_2d_gaussian(output)
                         if use_sample:
-                            y_hat[:, itr, :] = gaussian_sampler(gaussian_output[..., 0], gaussian_output[..., 1],
-                                                                gaussian_output[..., 2], gaussian_output[..., 3],
-                                                                gaussian_output[..., 4])
+                            y_hat[:, itr, :] = gaussian_sampler(gaussian_output[..., itr, 0],
+                                                                gaussian_output[..., itr, 1],
+                                                                gaussian_output[..., itr, 2],
+                                                                gaussian_output[..., itr, 3],
+                                                                gaussian_output[..., itr, 4])
                         else:
                             y_hat[:, itr, :] = gaussian_output[:, itr, 0:2]
 
                         if itr == pred_len - 1:
                             break
 
-                        itr_x = to_device(torch.zeros((batch_size, 1, 2)), device)
-                        itr_x[:, :, :] = y_hat[:, itr, :]
+                        itr_x = torch.unsqueeze(y_hat[:, itr, :], dim=-2)
                         output, hc = self(itr_x, hc)
 
                     # add sample result
@@ -191,6 +192,6 @@ class VanillaLSTM(torch.nn.Module):
                 raise Exception('No inference support for {}'.format(self.loss))
 
         return {
-            'sample_pred_distribution': torch.cat(sample_distribution, dim=0).permute(1, 0, 2, 3),
-            'sample_y_hat': torch.cat(sample_location, dim=0).permute(1, 0, 2, 3)
+            'sample_pred_distribution': torch.stack(sample_distribution, dim=0),
+            'sample_y_hat': torch.stack(sample_location, dim=0)
         }

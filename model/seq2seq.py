@@ -159,8 +159,7 @@ class Seq2SeqLSTM(torch.nn.Module):
             :param x: (batch_size, 5)
             """
             x = get_2d_gaussian(x)
-            sample_location = gaussian_sampler(x[..., 0], x[..., 1], x[..., 2], x[..., 3], x[..., 4])
-            return torch.tensor(sample_location, device=x.device)
+            return gaussian_sampler(x[..., 0], x[..., 1], x[..., 2], x[..., 3], x[..., 4])
 
         with torch.no_grad():
             if self.loss == '2d_gaussian':
@@ -186,8 +185,7 @@ class Seq2SeqLSTM(torch.nn.Module):
 
             else:
                 raise Exception('No inference support for {}'.format(self.loss))
-
         return {
-            'sample_pred_distribution': torch.cat(sample_distribution, dim=0).permute(1, 0, 2, 3),
-            'sample_y_hat': torch.cat(sample_location, dim=0).permute(1, 0, 2, 3)
+            'sample_pred_distribution': torch.stack(sample_distribution, dim=0),
+            'sample_y_hat': torch.stack(sample_location, dim=0)
         }
