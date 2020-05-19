@@ -3,6 +3,7 @@ import torch
 import numpy as np
 from torch.distributions.multivariate_normal import MultivariateNormal
 
+
 def make_mlp(dim_list, activation='relu', batch_norm=False, dropout=0):
     """Factory for multi-layer perceptron."""
     layers = []
@@ -19,15 +20,20 @@ def make_mlp(dim_list, activation='relu', batch_norm=False, dropout=0):
     return nn.Sequential(*layers)
 
 
-def get_loss_by_name(distribution, y, name):
+def get_loss_by_name(distribution, y, name, **kwargs):
     """
     Calculate different types of models as name.
-    :return: [..., 1]
+    :return: [..., 1/2]
     """
+    if 'keep' in kwargs:
+        keep = kwargs['keep']
+    else:
+        keep = False
+
     if name == '2d_gaussian':
-        loss = neg_likelihood_gaussian_pdf(distribution, y)
+        loss = neg_likelihood_gaussian_pdf(distribution, y, keep=keep)
     elif name == 'mixed':
-        loss = neg_likelihood_mixed_pdf(distribution, y)
+        loss = neg_likelihood_mixed_pdf(distribution, y, keep=keep)
     else:
         raise Exception('No support for loss {}'.format(name))
     return loss
@@ -56,11 +62,12 @@ def l1_loss(pred_traj, pred_traj_gt):
     return torch.sum(torch.abs(pred_traj - pred_traj_gt), dim=-1, keepdim=True)
 
 
-def neg_likelihood_gaussian_pdf(gaussian_output, target):
+def neg_likelihood_gaussian_pdf(gaussian_output, target, keep=False):
     """
     Negative log likelihood loss based on 2D Gaussian Distribution
     :param gaussian_output: Tensor[..., pred_length, 5] [mu_x, mu_y, sigma_x, sigma_y, cor]
     :param target: Tensor[..., pred_length, 2]
+    :param keep: T/F, keep value along dimension if possible.
     :return: loss -> Tensor[..., pred_length, 1]
     """
     mu_x, mu_y, sigma_x, sigma_y, cor = torch.split(gaussian_output, 1, dim=2)
@@ -105,13 +112,14 @@ def neg_likelihood_gaussian_pdf(gaussian_output, target):
     return loss
 
 
-def neg_likelihood_mixed_pdf(mixed_output, target, phi=2):
+def neg_likelihood_mixed_pdf(mixed_output, target, phi=2, keep=False):
     """
     Calculate loss by non likelihood loss of mixed distribution.
      1 * Gaussian_PDF(x|mux, sx) + phi * Laplace_PDF(y|muy, sy)
     :param mixed_output: [..., 5]
     :param target: [..., 2]
     :param phi: a float number
+    :param keep: T/F, keep value along dimension if possible.
     :return: loss [..., 1]
     """
     mu_x, mu_y, sigma_x, spread_y, _ = torch.split(mixed_output, 1, dim=2)
@@ -139,11 +147,12 @@ def neg_likelihood_mixed_pdf(mixed_output, target, phi=2):
     gaussian_pdf_clip = torch.clamp(gaussian_pdf, min=epsilon, max=float('inf'))
     laplace_pdf_clip = torch.clamp(laplace_pdf, min=epsilon, max=float('inf'))
 
-    loss = - (torch.log(gaussian_pdf_clip) + phi * torch.log(laplace_pdf_clip))
-
-    assert loss.shape[-1] == 1
-
-    return loss
+    if not keep:
+        loss = - (torch.log(gaussian_pdf_clip) + phi * torch.log(laplace_pdf_clip))
+        assert loss.shape[-1] == 1
+        return loss
+    else:
+        return torch.cat([gaussian_pdf_clip, laplace_pdf_clip], dim=-1)
 
 
 def get_2d_gaussian(model_output):
@@ -166,7 +175,7 @@ def gaussian_sampler(mux, muy, sx, sy, rho):
     :return: one 2D point (x, y)
     """
     # Extract mean
-    mean = torch.cat([mux, muy], dim=-1)   # [batch_size, 2]
+    mean = torch.cat([mux, muy], dim=-1)  # [batch_size, 2]
     # Extract covariance matrix
     cov = torch.cat([sx * sx, rho * sx * sy, rho * sx * sy, sy * sy], dim=-1)  # [batch_size, 2, 2]
     cov = torch.reshape(cov, (cov.shape[0], 2, 2))
