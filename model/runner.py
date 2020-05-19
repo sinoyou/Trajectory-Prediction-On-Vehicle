@@ -368,9 +368,10 @@ class Tester:
             batch_l1_y = l1_loss(torch.unsqueeze(batch_abs_y_hat[..., 1], dim=-1),
                                  torch.unsqueeze(batch_abs_y[..., 1], dim=-1))
 
-            for idx in range(batch_abs_y_hat.shape[0]):
+            for idx in range(batch_abs_y_hat.shape[1]):
                 # len(shape) == 3
-                x, y, abs_x, abs_y = batch_x[idx], batch_y[idx], batch_abs_x[idx], batch_abs_y[idx]
+                x, y, abs_x, abs_y = batch_x[idx].unsqueeze(dim=0), batch_y[idx].unsqueeze(dim=0), \
+                                     batch_abs_x[idx].unsqueeze(dim=0), batch_abs_y[idx].unsqueeze(dim=0)
                 # len(shape) == 4
                 y_hat, abs_y_hat = batch_y_hat[:, idx], batch_abs_y_hat[:, idx]
                 loss = batch_loss[:, idx]
@@ -422,7 +423,7 @@ class Tester:
 
                 # plot
                 record = dict()
-                record['tag'] = t
+                record['tag'] = idx
                 record['step'] = step
                 record['title'] = msg2
 

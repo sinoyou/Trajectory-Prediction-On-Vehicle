@@ -66,9 +66,6 @@ class Recorder:
         :param mode: plot mode. 1 - sample trajectories, 2 - gaussian ellipse, 3 - potential field
         :param relative: if the prediction is on the relative offset.
         """
-        # assert trajectories[0]['x'].ndim == 3  # for pytorch1.4.0
-        assert len(trajectories[0]['x'].shape) == 3
-
         progress = tqdm(range(len(trajectories)))
 
         # count modes
@@ -87,7 +84,7 @@ class Recorder:
 
             start = np.expand_dims(abs_x[:, cat_point, :], axis=1)
 
-            fig, subplots = plt.subplots(1, num_mode)
+            fig, subplots = plt.subplots(1, num_mode, figsize=(num_mode * 4, 4), sharex=True, sharey=True)
             if num_mode == 1:
                 subplots = [subplots]
 
@@ -203,7 +200,7 @@ def rel_gaussian_to_abs_gaussian(rel_pred_distribution, start):
         abs_pred_distribution[..., step, :] = \
             transform_to_parameter(sum_mux, sum_muy, sum_sxsx, sum_sysy, sum_sxsy)
 
-        return abs_pred_distribution
+    return abs_pred_distribution
 
 
 def rel_mixed_to_abs_mixed(rel_pred_distribution, start):
@@ -218,5 +215,5 @@ def rel_mixed_to_abs_mixed(rel_pred_distribution, start):
     abs_pred_distribution[..., 0, 2:4] = rel_pred_distribution[..., 0, 2:4]
     for step in range(1, rel_pred_distribution.shape[-2]):
         abs_pred_distribution[..., step, 0:4] = rel_pred_distribution[..., step, 0:4] + \
-                                              abs_pred_distribution[..., step - 1, 0:4]
+                                                abs_pred_distribution[..., step - 1, 0:4]
     return abs_pred_distribution
