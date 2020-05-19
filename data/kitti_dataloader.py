@@ -175,14 +175,13 @@ class SingleKittiDataLoader:
         """
         Process model generated trajectories points.
             1. from relative to absolute.
-        :param y_hat:
-        :param kwargs:
-        :return:
         """
         post_y_hat = y_hat
         # post process relative to absolute
         if 'start' in kwargs.keys():
             post_y_hat = rel_to_abs(post_y_hat, kwargs['start'])
+        else:
+            raise Exception('Start location not specified.')
         return post_y_hat
 
 
