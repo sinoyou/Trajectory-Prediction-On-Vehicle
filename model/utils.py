@@ -70,8 +70,8 @@ def neg_likelihood_gaussian_pdf(gaussian_output, target, keep=False):
     :param keep: T/F, keep value along dimension if possible.
     :return: loss -> Tensor[..., pred_length, 1]
     """
-    mu_x, mu_y, sigma_x, sigma_y, cor = torch.split(gaussian_output, 1, dim=2)
-    tar_x, tar_y = torch.split(target, 1, dim=2)
+    mu_x, mu_y, sigma_x, sigma_y, cor = torch.split(gaussian_output, 1, dim=-1)
+    tar_x, tar_y = torch.split(target, 1, dim=-1)
 
     # print(mu_x, mu_y)
     # print(tar_x, tar_y)
@@ -122,8 +122,8 @@ def neg_likelihood_mixed_pdf(mixed_output, target, phi=2, keep=False):
     :param keep: T/F, keep value along dimension if possible.
     :return: loss [..., 1]
     """
-    mu_x, mu_y, sigma_x, spread_y, _ = torch.split(mixed_output, 1, dim=2)
-    tar_x, tar_y = torch.split(target, 1, dim=2)
+    mu_x, mu_y, sigma_x, spread_y, _ = torch.split(mixed_output, 1, dim=-1)
+    tar_x, tar_y = torch.split(target, 1, dim=-1)
 
     def single_gaussian_pdf(x_gt, mux, sigma_x):
         norm_x = x_gt - mux
@@ -158,8 +158,8 @@ def neg_likelihood_mixed_pdf(mixed_output, target, phi=2, keep=False):
 def get_2d_gaussian(model_output):
     """
     Transform model's output into 2D Gaussian format
-    :param model_output: Tensor[batch_size, pred_length, 5]
-    :return: gaussian_output -> Tensor[batch_size, pred_length, 5]
+    :param model_output: Tensor[..., pred_length, 5]
+    :return: gaussian_output -> Tensor[..., pred_length, 5]
     """
     mu_x = model_output[..., 0]
     mu_y = model_output[..., 1]
@@ -172,13 +172,13 @@ def get_2d_gaussian(model_output):
 def gaussian_sampler(mux, muy, sx, sy, rho):
     """
     Use random sampler to sample 2D points from gaussian distribution.
-    :return: one 2D point (x, y)
+    :return: sampled points
     """
     # Extract mean
-    mean = torch.cat([mux, muy], dim=-1)  # [batch_size, 2]
+    mean = torch.stack([mux, muy], dim=-1)  # [batch_size, 2]
     # Extract covariance matrix
-    cov = torch.cat([sx * sx, rho * sx * sy, rho * sx * sy, sy * sy], dim=-1)  # [batch_size, 2, 2]
-    cov = torch.reshape(cov, (cov.shape[0], 2, 2))
+    cov = torch.stack([sx * sx, rho * sx * sy, rho * sx * sy, sy * sy], dim=-1)
+    cov = torch.reshape(cov, (cov.shape[0], 2, 2))  # [batch_size, 2, 2]
     gaussian_dist = MultivariateNormal(loc=mean, covariance_matrix=cov)
 
     # Sample a point from the multiplytivariate normal distribution
