@@ -56,7 +56,7 @@ class Recorder:
             self.logger.addHandler(file_handler)
         self.logger.setLevel(logging.INFO)
 
-    def plot_trajectory(self, trajectories, step, cat_point, mode, relavtive):
+    def plot_trajectory(self, trajectories, step, cat_point, mode, relative):
         """
         Plot trajectory on the board
         :param trajectories: list of dicts. dict {'tag', 'x', 'y', 'rel_x', 'rel_y', 'pred_distribution'}.
@@ -64,7 +64,7 @@ class Recorder:
         :param step: print step
         :param cat_point: 1 <= cat_point < obs_len, then point where rel_y and rel_y_hat start.
         :param mode: plot mode. 1 - sample trajectories, 2 - gaussian ellipse, 3 - potential field
-        :param relavtive: if the prediction is on the relative offset.
+        :param relative: if the prediction is on the relative offset.
         """
         # assert trajectories[0]['x'].ndim == 3  # for pytorch1.4.0
         assert len(trajectories[0]['x'].shape) == 3
@@ -86,45 +86,11 @@ class Recorder:
             abs_y = trajectory['abs_y']
 
             # when using relative prediction, gaussian mux and muy should be replaced with absolute for visualization
-            if relavtive:
+            if relative:
                 if i == 0:
                     self.logger.warning(
                         'Notice relative data is using. If distribution is not 2d_gaussian, plot may be unexpected.')
-                abs_pred_distribution = np.zeros_like(pred_distribution)
-                abs_pred_distribution[:, 0, 0:2] = abs_y_hat[:, 0, 0:2]
-                abs_pred_distribution[:, 0, 2:5] = pred_distribution[:, 0, 2:5]
-
-                def transform_to_parameter(mux, muy, sxsx, sysy, sxsy):
-                    """
-                    Transformer 2D gaussian matrix form to parameter form
-                    MATRIX FORM:
-                    [mux, muy]
-                        +
-                    [
-                        [sxsx, sxsy]
-                        [sxsy, sysy]
-                    ]
-                    """
-                    sx, sy = np.sqrt(sxsx), np.sqrt(sysy)
-                    rho = sxsy / (sx * sy)
-                    parameter_cat = np.concatenate([mux, muy, sx, sy, rho], axis=-1)
-                    assert len(parameter_cat.shape) == 2
-                    return parameter_cat
-
-                for step in range(1, pred_distribution.shape[1]):
-                    pre_mux, pre_muy, pre_sx, pre_sy, pre_rho = \
-                        np.split(abs_pred_distribution[:, step - 1, :], indices_or_sections=5, axis=-1)
-                    cur_mux, cur_muy, cur_sx, cur_sy, cur_rho = \
-                        np.split(pred_distribution[:, step, :], indices_or_sections=5, axis=-1)
-                    sum_mux = pre_mux + cur_mux
-                    sum_muy = pre_muy + cur_muy
-                    sum_sxsx = pre_sx ** 2 + cur_mux ** 2
-                    sum_sysy = pre_sy ** 2 + cur_muy ** 2
-                    sum_sxsy = pre_sx * pre_sy * pre_rho + cur_sx * cur_sy * cur_rho
-                    abs_pred_distribution[:, step, :] = \
-                        transform_to_parameter(sum_mux, sum_muy, sum_sxsx, sum_sysy, sum_sxsy)
-
-                pred_distribution = abs_pred_distribution
+                pred_distribution = rel_gaussian_to_abs_gaussian(pred_distribution, abs_y_hat[:, 0, 0:2])
 
             start = np.expand_dims(abs_x[:, cat_point, :], axis=1)
 
@@ -195,3 +161,73 @@ def rel_to_abs(rel, start):
     for i in range(1, trajectory.shape[1]):
         trajectory[:, i, :] = rel[:, i, :] + trajectory[:, i - 1, :]
     return trajectory
+
+
+def rel_distribution_to_abs_distribution(name, rel_pred, first_pred_loc):
+    if name == '2d_gaussian':
+        return rel_gaussian_to_abs_gaussian(rel_pred, first_pred_loc)
+    elif name == 'mixed':
+        return rel_mixed_to_abs_mixed(rel_pred, first_pred_loc)
+    else:
+        raise Exception('No distribution transformer support for {}'.format(name))
+
+
+def rel_gaussian_to_abs_gaussian(rel_pred_distribution, first_pred_loc):
+    """
+    Based on the assumption that relative gaussian distribution predictions are independent each other.
+    Transform from relative location prediction to absolute location prediction.
+    :param rel_pred_distribution: predicted relative distribution. shape -  [1, pred_len, 5]
+    :param first_pred_loc: the first predicted absolute location. shape - [1, 1, 2]
+    :return:
+    """
+    abs_pred_distribution = rel_pred_distribution.clone()
+    abs_pred_distribution[:, 0, 0:2] = first_pred_loc
+    abs_pred_distribution[:, 0, 2:5] = rel_pred_distribution[:, 0, 2:5]
+
+    def transform_to_parameter(mux, muy, sxsx, sysy, sxsy):
+        """
+        Transformer 2D gaussian matrix form to parameter form
+        MATRIX FORM:
+        [mux, muy]
+            +
+        [
+            [sxsx, sxsy]
+            [sxsy, sysy]
+        ]
+        """
+        sx, sy = np.sqrt(sxsx), np.sqrt(sysy)
+        rho = sxsy / (sx * sy)
+        parameter_cat = np.concatenate([mux, muy, sx, sy, rho], axis=-1)
+        assert len(parameter_cat.shape) == 2
+        return parameter_cat
+
+    for step in range(1, rel_pred_distribution.shape[1]):
+        pre_mux, pre_muy, pre_sx, pre_sy, pre_rho = \
+            np.split(abs_pred_distribution[:, step - 1, :], indices_or_sections=5, axis=-1)
+        cur_mux, cur_muy, cur_sx, cur_sy, cur_rho = \
+            np.split(rel_pred_distribution[:, step, :], indices_or_sections=5, axis=-1)
+        sum_mux = pre_mux + cur_mux
+        sum_muy = pre_muy + cur_muy
+        sum_sxsx = pre_sx ** 2 + cur_mux ** 2
+        sum_sysy = pre_sy ** 2 + cur_muy ** 2
+        sum_sxsy = pre_sx * pre_sy * pre_rho + cur_sx * cur_sy * cur_rho
+        abs_pred_distribution[:, step, :] = \
+            transform_to_parameter(sum_mux, sum_muy, sum_sxsx, sum_sysy, sum_sxsy)
+
+        return abs_pred_distribution
+
+
+def rel_mixed_to_abs_mixed(rel_pred_distribution, first_pred_loc):
+    """
+    Transform from rel to abs distribution. Notice that distribution along x and y is seperate.
+    :param rel_pred_distribution: [..., pred_len, 5]
+    :param first_pred_loc: [..., 2]
+    :return: [..., pred_len, 5]. Notice that mixed distribution only use 4 parameters, so the last one is useless.
+    """
+    abs_pred_distribution = rel_pred_distribution.clone()
+    abs_pred_distribution[:, 0, 0:2] = first_pred_loc
+    abs_pred_distribution[:, 0, 2:4] = rel_pred_distribution[:, 0, 2:4]
+    for step in range(1, rel_pred_distribution.shape[1]):
+        abs_pred_distribution[:, step, 0:4] = rel_pred_distribution[:, step, 0:4] + \
+                                              abs_pred_distribution[:, step-1, 0:4]
+    return abs_pred_distribution
