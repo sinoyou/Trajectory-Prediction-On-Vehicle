@@ -125,8 +125,11 @@ class Seq2SeqLSTM(torch.nn.Module):
         loss = self.get_loss(pred_distribution, y_gt)
         return {'model_output': model_output, 'pred_distribution': pred_distribution, 'loss': loss}
 
-    def get_loss(self, distribution, y_gt):
-        return get_loss_by_name(distribution=distribution, y=y_gt, name=self.loss)
+    def get_loss(self, distribution, y_gt, **kwargs):
+        return get_loss_by_name(distribution=distribution, y=y_gt, name=self.loss, **kwargs)
+
+    def get_loss_type(self):
+        return self.loss
 
     def inference(self, datax, pred_len, sample_times):
         """
