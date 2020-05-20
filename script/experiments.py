@@ -70,7 +70,7 @@ class ArgsMaker:
             'num_epochs': 401,  # debug!!!
             'learning_rate': 1e-3,
             'clip_threshold': 1.5,
-            'validate_every': 20,  # debug!!!
+            'validate_every': 40,  # debug!!!
             'weight_decay': 5e-5,
             # log
             'print_every': 1,
@@ -78,7 +78,7 @@ class ArgsMaker:
             'board_name': None,  # missing
             # load and save
             'save_dir': None,  # missing
-            'save_every': 20,  # debug!!!
+            'save_every': 40,  # debug!!!
             'restore_dir': None,
             # validation
             'val_dataset': '../data/kitti-all-label02.csv',
@@ -382,7 +382,7 @@ if __name__ == '__main__':
     #    a. Use prefix to identify different batch experiments.
     #    b. All data in one batch experiment will be in stored in runs/prefix/ and save/prefix/
     # experiment prefix
-    prefix = '0519'
+    prefix = '0520'
     only_eval = False
     log_file = Recorder(os.path.join(runs_dir_root, prefix), board=False, logfile=True, stream=True)
 

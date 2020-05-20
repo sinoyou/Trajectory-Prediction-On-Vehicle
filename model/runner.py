@@ -404,12 +404,12 @@ class Tester:
                 min_fde_y = torch.min(l1_y[:, -1, :])
                 if neg_likelihood.shape[-1] == 2:
                     like_x, like_y = torch.split(neg_likelihood, 1, dim=-1)
-                    min_ll = torch.min(torch.sum(like_x, dim=[1, 2])) / self.args.pred_len, torch.min(
+                    min_nll = torch.min(torch.sum(like_x, dim=[1, 2])) / self.args.pred_len, torch.min(
                         torch.sum(like_y, dim=[1, 2])) / self.args.pred_len
                     min_first_nll = torch.min(like_x[:, 0, :]), torch.min(like_y[:, 0, :])
                     min_final_nll = torch.min(like_x[:, -1, :]), torch.min(like_y[:, -1, :])
                 else:
-                    min_ll = torch.min(torch.sum(neg_likelihood, dim=[1, 2])) / self.args.pred_len
+                    min_nll = torch.min(torch.sum(neg_likelihood, dim=[1, 2])) / self.args.pred_len
                     min_first_nll = torch.min(neg_likelihood[:, 0, :])
                     min_final_nll = torch.min(neg_likelihood[:, -1, :])
 
@@ -454,14 +454,14 @@ class Tester:
                 record['min_fde_x'] = min_fde_x.cpu().numpy()
                 record['min_fde_y'] = min_fde_y.cpu().numpy()
                 if neg_likelihood.shape[-1] == 2:
-                    record['min_nll_x'] = min_ll[0]
+                    record['min_nll_x'] = min_nll[0]
                     record['min_first_nll_x'] = min_first_nll[0]
                     record['min_final_nll_x'] = min_final_nll[0]
-                    record['min_nll_y'] = min_ll[1]
+                    record['min_nll_y'] = min_nll[1]
                     record['min_first_nll_y'] = min_first_nll[1]
                     record['min_final_nll_y'] = min_final_nll[1]
                 else:
-                    record['min_nll'] = min_ll
+                    record['min_nll'] = min_nll
                     record['min_first_nll'] = min_first_nll
                     record['min_final_nll'] = min_final_nll
 
