@@ -194,8 +194,8 @@ def rel_gaussian_to_abs_gaussian(rel_pred_distribution, start):
             torch.split(rel_pred_distribution[..., step, :], 1, dim=-1)
         sum_mux = pre_mux + cur_mux
         sum_muy = pre_muy + cur_muy
-        sum_sxsx = pre_sx ** 2 + cur_mux ** 2
-        sum_sysy = pre_sy ** 2 + cur_muy ** 2
+        sum_sxsx = pre_sx ** 2 + cur_sx ** 2
+        sum_sysy = pre_sy ** 2 + cur_sy ** 2
         sum_sxsy = pre_sx * pre_sy * pre_rho + cur_sx * cur_sy * cur_rho
         abs_pred_distribution[..., step, :] = \
             transform_to_parameter(sum_mux, sum_muy, sum_sxsx, sum_sysy, sum_sxsy)
