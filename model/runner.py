@@ -359,8 +359,8 @@ class Tester:
                 batch_abs_pred_distb = self.test_dataset.norm_to_raw(batch_abs_pred_distb)
 
             # metric calculate
-            batch_likelihood = \
-                -self.model.get_loss(distribution=batch_abs_pred_distb, y_gt=batch_abs_y, keep=True)
+            batch_neg_likelihood = \
+                self.model.get_loss(distribution=batch_abs_pred_distb, y_gt=batch_abs_y, keep=True)
             batch_l2 = l2_loss(batch_y_hat, batch_y)  # norm scale
             batch_euler = l2_loss(batch_abs_y_hat, batch_abs_y)  # raw scale
             batch_l1_x = l1_loss(torch.unsqueeze(batch_abs_y_hat[..., 0], dim=-1),
@@ -380,7 +380,7 @@ class Tester:
                 l1_x = batch_l1_x[:, idx]
                 l1_y = batch_l1_y[:, idx]
                 euler = batch_euler[:, idx]
-                likelihood = batch_likelihood[:, idx]
+                neg_likelihood = batch_neg_likelihood[:, idx]
 
                 # average metrics calculation
                 # Hint: when mode is absolute, abs_? and ? are the same, so L2 loss and destination error as well.
@@ -402,16 +402,16 @@ class Tester:
                 min_ade_y = torch.min(torch.sum(l1_y, dim=[1, 2]) / self.args.pred_len)
                 min_fde_x = torch.min(l1_x[:, -1, :])
                 min_fde_y = torch.min(l1_y[:, -1, :])
-                if likelihood.shape[-1] == 2:
-                    like_x, like_y = torch.split(likelihood, 1, dim=-1)
+                if neg_likelihood.shape[-1] == 2:
+                    like_x, like_y = torch.split(neg_likelihood, 1, dim=-1)
                     min_ll = torch.min(torch.sum(like_x, dim=[1, 2])) / self.args.pred_len, torch.min(
                         torch.sum(like_y, dim=[1, 2])) / self.args.pred_len
-                    min_first_ll = torch.min(like_x[:, 0, :]), torch.min(like_y[:, 0, :])
-                    min_final_ll = torch.min(like_x[:, -1, :]), torch.min(like_y[:, -1, :])
+                    min_first_nll = torch.min(like_x[:, 0, :]), torch.min(like_y[:, 0, :])
+                    min_final_nll = torch.min(like_x[:, -1, :]), torch.min(like_y[:, -1, :])
                 else:
-                    min_ll = torch.min(torch.sum(likelihood, dim=[1, 2])) / self.args.pred_len
-                    min_first_ll = torch.min(likelihood[:, 0, :])
-                    min_final_ll = torch.min(likelihood[:, -1, :])
+                    min_ll = torch.min(torch.sum(neg_likelihood, dim=[1, 2])) / self.args.pred_len
+                    min_first_nll = torch.min(neg_likelihood[:, 0, :])
+                    min_final_nll = torch.min(neg_likelihood[:, -1, :])
 
                 msg1 = '{}_MLoss_{:.3}_MAde_{:.3f}_MFde_{:.3f}'.format(
                     t, min_loss, min_ade, min_fde)
@@ -453,17 +453,17 @@ class Tester:
                 record['min_ade_y'] = min_ade_y.cpu().numpy()
                 record['min_fde_x'] = min_fde_x.cpu().numpy()
                 record['min_fde_y'] = min_fde_y.cpu().numpy()
-                if likelihood.shape[-1] == 2:
-                    record['min_ll_x'] = min_ll[0]
-                    record['min_first_ll_x'] = min_first_ll[0]
-                    record['min_final_ll_x'] = min_final_ll[0]
-                    record['min_ll_y'] = min_ll[1]
-                    record['min_first_ll_y'] = min_first_ll[1]
-                    record['min_final_ll_y'] = min_final_ll[1]
+                if neg_likelihood.shape[-1] == 2:
+                    record['min_nll_x'] = min_ll[0]
+                    record['min_first_nll_x'] = min_first_nll[0]
+                    record['min_final_nll_x'] = min_final_nll[0]
+                    record['min_nll_y'] = min_ll[1]
+                    record['min_first_nll_y'] = min_first_nll[1]
+                    record['min_final_nll_y'] = min_final_nll[1]
                 else:
-                    record['min_ll'] = min_ll
-                    record['min_first_ll'] = min_first_ll
-                    record['min_final_ll'] = min_final_ll
+                    record['min_nll'] = min_ll
+                    record['min_first_nll'] = min_first_nll
+                    record['min_final_nll'] = min_final_nll
 
                 save_list.append(record)
 
@@ -474,11 +474,11 @@ class Tester:
         metric_list = ['min_loss', 'min_first_loss', 'min_final_loss',
                        'min_l2', 'min_final_l2',
                        'min_ade', 'min_fde', 'min_ade_x', 'min_ade_y', 'min_fde_x', 'min_fde_y']
-        if 'min_ll_x' in save_list[0].keys():
-            metric_list = metric_list + ['min_ll_x', 'min_first_ll_x', 'min_final_ll_x',
-                                         'min_ll_y', 'min_first_ll_y', 'min_final_ll_y']
+        if 'min_nll_x' in save_list[0].keys():
+            metric_list = metric_list + ['min_nll_x', 'min_first_nll_x', 'min_final_nll_x',
+                                         'min_nll_y', 'min_first_nll_y', 'min_final_nll_y']
         else:
-            metric_list = metric_list + ['min_ll', 'min_first_ll', 'min_final_ll']
+            metric_list = metric_list + ['min_nll', 'min_first_nll', 'min_final_nll']
 
         global_metrics = dict()
         for metric in metric_list:
