@@ -106,8 +106,11 @@ class VanillaLSTM(torch.nn.Module):
         loss = self.get_loss(pred_distribution, y_gt)
         return {'model_output': model_output, 'pred_distribution': pred_distribution, 'loss': loss}
 
-    def get_loss(self, distribution, y_gt):
-        return get_loss_by_name(distribution=distribution, y=y_gt, name=self.loss)
+    def get_loss(self, distribution, y_gt, **kwargs):
+        return get_loss_by_name(distribution=distribution, y=y_gt, name=self.loss, **kwargs)
+
+    def get_loss_type(self):
+        return self.loss
 
     def inference(self, datax, pred_len, sample_times):
         """
@@ -118,6 +121,7 @@ class VanillaLSTM(torch.nn.Module):
         :return: gaussian_output [sample_times, pred_len, 5], location_output[sample_times, pred_len, 2]
         """
         device = datax.device
+        batch_size = datax.shape[0]
 
         if self.loss != '2d_gaussian' and sample_times >= 1:
             raise Exception('No sample support for {}'.format(self.loss))
@@ -134,39 +138,37 @@ class VanillaLSTM(torch.nn.Module):
             sample_location = list()
             if self.loss == '2d_gaussian':
                 for _ in range(sample_times):
-                    y_hat = to_device(torch.zeros((1, pred_len, 2)), device)
-                    gaussian_output = to_device(torch.zeros((1, pred_len, 5)), device)
+                    y_hat = to_device(torch.zeros((batch_size, pred_len, 2)), device)
+                    gaussian_output = to_device(torch.zeros((batch_size, pred_len, 5)), device)
 
                     # initial hidden state
                     output, hc = self(datax, hc=None)
-                    output = torch.unsqueeze(output[:, -1, :], dim=1)
+                    output = torch.unsqueeze(output[:, -1, :], dim=-2)
 
                     # predict iterative
                     for itr in range(pred_len):
-                        gaussian_output[0, itr, :] = get_2d_gaussian(output)
+                        gaussian_output[:, itr:itr + 1, :] = get_2d_gaussian(output)
                         if use_sample:
-                            y_hat[0, itr, 0], y_hat[0, itr, 1] = gaussian_sampler(
-                                gaussian_output[0, itr, 0].cpu().numpy(),
-                                gaussian_output[0, itr, 1].cpu().numpy(),
-                                gaussian_output[0, itr, 2].cpu().numpy(),
-                                gaussian_output[0, itr, 3].cpu().numpy(),
-                                gaussian_output[0, itr, 4].cpu().numpy())
+                            y_hat[:, itr, :] = gaussian_sampler(gaussian_output[..., itr, 0],
+                                                                gaussian_output[..., itr, 1],
+                                                                gaussian_output[..., itr, 2],
+                                                                gaussian_output[..., itr, 3],
+                                                                gaussian_output[..., itr, 4])
                         else:
-                            y_hat[0, itr, :] = gaussian_output[0, itr, 0:2]
+                            y_hat[:, itr, :] = gaussian_output[:, itr, 0:2]
 
                         if itr == pred_len - 1:
                             break
 
-                        itr_x = to_device(torch.zeros((1, 1, 2)), device)
-                        itr_x[:, :, :] = y_hat[:, itr, :]
+                        itr_x = torch.unsqueeze(y_hat[:, itr, :], dim=-2)
                         output, hc = self(itr_x, hc)
 
                     # add sample result
                     sample_distribution.append(gaussian_output)
                     sample_location.append(y_hat)
             elif self.loss == 'mixed':
-                y_hat = torch.zeros((1, pred_len, 2), device=device)
-                mixed_output = torch.zeros((1, pred_len, 5), device=device)
+                y_hat = torch.zeros((batch_size, pred_len, 2), device=device)
+                mixed_output = torch.zeros((batch_size, pred_len, 5), device=device)
 
                 # initial hidden state
                 output, hc = self(datax, hc=None)
@@ -174,13 +176,13 @@ class VanillaLSTM(torch.nn.Module):
 
                 # predict iterative
                 for itr in range(pred_len):
-                    mixed_output[0, itr, :] = get_mixed(output)
-                    y_hat[0, itr, :] = mixed_output[0, itr, 0:2]
+                    mixed_output[:, itr: itr + 1, :] = get_mixed(output)
+                    y_hat[:, itr, :] = mixed_output[:, itr, 0:2]
 
                     if itr == pred_len - 1:
                         break
 
-                    itr_x = y_hat[0, itr, :].reshape(1, 1, 2)
+                    itr_x = torch.unsqueeze(y_hat[:, itr, :], dim=-2)
                     output, hc = self(itr_x, hc)
 
                 sample_distribution.append(mixed_output)
@@ -189,6 +191,6 @@ class VanillaLSTM(torch.nn.Module):
                 raise Exception('No inference support for {}'.format(self.loss))
 
         return {
-            'sample_pred_distribution': torch.cat(sample_distribution, dim=0),
-            'sample_y_hat': torch.cat(sample_location, dim=0)
+            'sample_pred_distribution': torch.stack(sample_distribution, dim=0),
+            'sample_y_hat': torch.stack(sample_location, dim=0)
         }

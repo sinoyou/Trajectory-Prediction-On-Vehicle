@@ -13,7 +13,7 @@ class SingleKittiDataLoader:
     """
 
     def __init__(self, file_path, batch_size, trajectory_length, device, mode, train_leave, recorder, seed=17373321,
-                 valid_scene=None):
+                 valid_scene=None, batch_fragment=False):
         self.count = 0
         self.batch_size = batch_size
         self.seq_len = trajectory_length
@@ -21,6 +21,7 @@ class SingleKittiDataLoader:
         self.device = device
         self.mode = str.lower(mode)
         self.recorder = recorder
+        self.batch_fragment = batch_fragment
 
         # read raw data. 
         raw_data = pd.read_csv(file_path)
@@ -120,8 +121,19 @@ class SingleKittiDataLoader:
         For relative data: raw scale(=norm_to_raw(norm_scale_rel_data))
         :return: dict('data'. 'rel_data')
         """
-        batch_data = np.stack(self.data[self.batch_ptr:self.batch_ptr + self.batch_size], axis=0)
-        self.batch_ptr += self.batch_size
+        # complete batch data
+        if self.batch_ptr + self.batch_size <= self.count:
+            batch_data = np.stack(self.data[self.batch_ptr:self.batch_ptr + self.batch_size], axis=0)
+            self.batch_ptr += self.batch_size
+        # incomplete batch data, left data not enough
+        else:
+            if self.batch_fragment:
+                batch_data = np.stack(self.data[self.batch_ptr:], axis=0)
+                self.batch_ptr = self.count
+            else:
+                raise Exception('No Complete Batch Data index = {} + batch_size = {} > count = {}'.format(
+                    self.batch_ptr, self.batch_size, self.count
+                ))
         batch_data = torch.from_numpy(batch_data).type(torch.float).to(self.device)
         rel_batch_data = abs_to_rel(self.norm_to_raw(batch_data))
         return {'data': batch_data, 'rel_data': rel_batch_data}
@@ -144,7 +156,13 @@ class SingleKittiDataLoader:
             raise Exception('Not Recognized Data Shape.')
 
     def __len__(self):
-        return self.count // self.batch_size
+        if not self.batch_fragment:
+            return self.count // self.batch_size
+        else:
+            if self.count % self.batch_size != 0:
+                return self.count // self.batch_size + 1
+            else:
+                return self.count // self.batch_size
 
     def get_mean_std(self):
         for target in self.norm_targets:
@@ -157,14 +175,13 @@ class SingleKittiDataLoader:
         """
         Process model generated trajectories points.
             1. from relative to absolute.
-        :param y_hat:
-        :param kwargs:
-        :return:
         """
         post_y_hat = y_hat
         # post process relative to absolute
         if 'start' in kwargs.keys():
             post_y_hat = rel_to_abs(post_y_hat, kwargs['start'])
+        else:
+            raise Exception('Start location not specified.')
         return post_y_hat
 
 

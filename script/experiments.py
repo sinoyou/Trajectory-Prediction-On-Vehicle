@@ -32,11 +32,14 @@ cross_weights = {0: 0.014705882352941176,
                  19: 0.3431372549019608,
                  20: 0.0
                  }
-cross_scene = [0, 1, 2, 4, 5, 7, 9, 10, 11, 12, 13, 14, 15, 16, 17, 19]
-# cross_scene = [0, 1]
-cross_metrics = ['ave_loss', 'ade', 'fde', 'min_ade', 'min_fde', 'best_ave_loss',
-                 'best_ade', 'best_fde', 'best_min_ade', 'best_min_fde',
-                 'ade_x', 'ade_y', 'fde_x', 'fde_y', 'min_ade_x', 'min_ade_y', 'min_fde_x', 'min_fde_y']
+cross_scene = [19, 17, 16, 15, 14, 13, 12, 11, 10, 9, 7, 5, 4, 2, 1, 0]
+cross_metrics = ['min_loss', 'min_first_loss', 'min_final_loss',
+                 'min_ade', 'min_fde', 'min_ade_x', 'min_ade_y', 'min_fde_x', 'min_fde_y',
+                 'min_l2', 'min_final_l2',
+                 'min_nll', 'min_first_nll', 'min_final_nll',
+                 'min_nll_x', 'min_nll_y', 'min_first_nll_x', 'min_first_nll_y', 'min_final_nll_x', 'min_final_nll_y']
+cross_metrics = cross_metrics + ['best_' + k for k in cross_metrics]
+
 # only_eval_model_name = 'latest_checkpoint.ckpt'
 only_eval_model_name = 'temp_checkpoint_val.ckpt'
 
@@ -64,10 +67,10 @@ class ArgsMaker:
             'loss': None,  # missing
             # train args
             'batch_size': 256,
-            'num_epochs': 301,  # debug!!!
+            'num_epochs': 401,  # debug!!!
             'learning_rate': 1e-3,
             'clip_threshold': 1.5,
-            'validate_every': 15,  # debug!!!
+            'validate_every': 20,  # debug!!!
             'weight_decay': 5e-5,
             # log
             'print_every': 1,
@@ -75,7 +78,7 @@ class ArgsMaker:
             'board_name': None,  # missing
             # load and save
             'save_dir': None,  # missing
-            'save_every': 15,  # debug!!!
+            'save_every': 20,  # debug!!!
             'restore_dir': None,
             # validation
             'val_dataset': '../data/kitti-all-label02.csv',
@@ -140,6 +143,7 @@ class ArgsMaker:
                         tag = tag + '_' + bname
                 for name in names:
                     tag = tag + '_{}'.format(args[name])
+                tag = tag.replace(' ', '')
             candidates[tag] = args.copy()
             return
 
@@ -227,6 +231,9 @@ class CrossValidationRecorder:
         no_appear_invalid = [scene for scene in no_appear_scenes if weights[scene] > 0]
         if len(no_appear_invalid) > 0:
             warning_msg.append('Scene of weight > 0 {} never appears in data'.format(no_appear_invalid))
+        # calculate by metrics
+        exist_metrics = list(self.eval_records.columns)
+        warning_msg.append('metrics {} not exist in recording, ignore.'.format(set(metrics) - set(exist_metrics)))
 
         # level 1: filter by sample_time
         # level 2: filter by metric
@@ -236,8 +243,7 @@ class CrossValidationRecorder:
         sample_times = self.eval_records['sample_time'].unique()
         for sample_time in sample_times:
             data = self.eval_records[self.eval_records['sample_time'] == sample_time]
-            # calculate by metrics
-            for metric in metrics:
+            for metric in set(metrics).intersection(set(exist_metrics)):
                 data_no_nan = data[~data[metric].isna()]  # get data without nan in 'metric'
                 times = data_no_nan['epoch'].unique()  # get all time steps
                 metric_result = dict()
@@ -379,11 +385,13 @@ if __name__ == '__main__':
     prefix = '0519'
     only_eval = False
     log_file = Recorder(os.path.join(runs_dir_root, prefix), board=False, logfile=True, stream=True)
+
     # 添加生成参数的规则
     argsMaker = ArgsMaker()
     argsMaker.add_arg_rule('model', ['seq2seq', 'vanilla'])
-    argsMaker.add_arg_rule(['loss', 'val_sample_times'], [('2d_gaussian', [0, 10, 20]), ('mixed', [0])], 'Lo_Sam')
-    argsMaker.add_arg_rule(['embedding_size', 'cell_size'], [(64, 128), (32, 64), (16, 32)], brief='ebd_cell')
+    argsMaker.add_arg_rule(['loss', 'val_sample_times'], [('2d_gaussian', [0, 1, 10, 20]), ('mixed', [0])], 'Lo_Sam')
+    argsMaker.add_arg_rule(['embedding_size', 'cell_size'], [(64, 128), (32, 64), (16, 32), (8, 16)], brief='ebd_cell')
+    # argsMaker.add_arg_rule(['embedding_size', 'cell_size'], [(64, 128)], brief='ebd_cell')
     argsMaker.add_arg_rule('relative', [False, True], brief='rel')
 
     blocker = ArgsBlocker()
