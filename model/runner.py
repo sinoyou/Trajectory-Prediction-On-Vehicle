@@ -10,7 +10,7 @@ from tqdm import tqdm
 from data.kitti_dataloader import SingleKittiDataLoader
 from script.cuda import get_device, to_device
 from script.tools import rel_distribution_to_abs_distribution
-from model.utils import l2_loss, l1_loss
+from model.utils import l2_loss, l1_loss, relative_l1_loss
 from model.vanilla import VanillaLSTM
 from model.seq2seq import Seq2SeqLSTM
 
@@ -26,7 +26,6 @@ class Trainer:
         self.device = get_device()
         self.recorder = recorder
         self.pre_epoch = 0
-        self.best_eval_result = dict()
         self.model, self.optimizer = self.build()
         self.data_loader = SingleKittiDataLoader(file_path=self.args.train_dataset,
                                                  batch_size=self.args.batch_size,
@@ -81,7 +80,7 @@ class Trainer:
             model.load_state_dict(checkpoint['model'])
             optimizer.load_state_dict(checkpoint['optimizer'])
             self.pre_epoch = checkpoint['epoch'] if 'epoch' in checkpoint.keys() else 0
-            self.best_eval_result = checkpoint['best_result'] if 'best_result' in checkpoint.keys() else dict()
+            self.eval_result = checkpoint['result'] if 'best_result' in checkpoint.keys() else list()
             self.recorder.logger.info('Saved model trained on epoch = {}'.format(self.pre_epoch))
 
         return model, optimizer
@@ -207,27 +206,19 @@ class Trainer:
             validator = Tester(val_dict, self.recorder)
             feedback = validator.evaluate(step=epoch)
 
-            # evaluation result process
-            self.best_eval_result.setdefault(sample_time, dict())
-            for key, value in feedback['global_metrics'].items():
-                best_eval_sample = self.best_eval_result[sample_time]
-                if 'best_' + key in best_eval_sample.keys():
-                    best_eval_sample['best_' + key] = min(best_eval_sample['best_' + key], value)
-                else:
-                    best_eval_sample['best_' + key] = value
-            # cv recoder not None, then combine feedback and best result to record.
+            # cv recoder not None, then get result to record.
             if cv_recorder:
                 temp = feedback['global_metrics'].copy()
-                for k, v in self.best_eval_result[sample_time].items():
-                    temp[k] = v
                 cv_recorder.add_evaluation_result(record=temp, epoch=epoch, valid_scene=self.args.val_scene,
                                                   sample_time=sample_time)
+            self.eval_result.append({'epoch': epoch, 'valid_scene': self.args.val_scene,
+                                     'sample_time': sample_time, 'record': feedback['global_metrics']})
 
     def get_checkpoint(self, epoch):
         checkpoint = dict()
         checkpoint['model'] = self.model.state_dict()
         checkpoint['optimizer'] = self.optimizer.state_dict()
-        checkpoint['best_result'] = self.best_eval_result
+        checkpoint['result'] = self.eval_result
         checkpoint['epoch'] = epoch
         checkpoint['args'] = self.args
         return checkpoint
@@ -367,6 +358,8 @@ class Tester:
                                  torch.unsqueeze(batch_abs_y[..., 0], dim=-1))
             batch_l1_y = l1_loss(torch.unsqueeze(batch_abs_y_hat[..., 1], dim=-1),
                                  torch.unsqueeze(batch_abs_y[..., 1], dim=-1))
+            batch_rel_l1_y = relative_l1_loss(torch.unsqueeze(batch_abs_y_hat[..., 1], dim=-1),
+                                              torch.unsqueeze(batch_abs_y[..., 1], dim=-1))
 
             for idx in range(batch_abs_y_hat.shape[1]):
                 # len(shape) == 3
@@ -379,6 +372,7 @@ class Tester:
                 l2 = batch_l2[:, idx]
                 l1_x = batch_l1_x[:, idx]
                 l1_y = batch_l1_y[:, idx]
+                rel_l1_y = batch_rel_l1_y[:, idx]
                 euler = batch_euler[:, idx]
                 neg_likelihood = batch_neg_likelihood[:, idx]
 
@@ -400,8 +394,10 @@ class Tester:
                 # fde_y = torch.sum(l1_y[:, -1, :]) / samples_count
                 min_ade_x = torch.min(torch.sum(l1_x, dim=[1, 2]) / self.args.pred_len)
                 min_ade_y = torch.min(torch.sum(l1_y, dim=[1, 2]) / self.args.pred_len)
+                min_rade_y = torch.min(torch.sum(rel_l1_y, dim=[1, 2]) / self.args.pred_len)
                 min_fde_x = torch.min(l1_x[:, -1, :])
                 min_fde_y = torch.min(l1_y[:, -1, :])
+                min_rfde_y = torch.min(rel_l1_y[:, -1, :])
                 if neg_likelihood.shape[-1] == 2:
                     like_x, like_y = torch.split(neg_likelihood, 1, dim=-1)
                     min_nll = torch.min(torch.sum(like_x, dim=[1, 2])) / self.args.pred_len, torch.min(
@@ -451,8 +447,10 @@ class Tester:
                 # record['fde_y'] = fde_y.cpu().numpy()
                 record['min_ade_x'] = min_ade_x.cpu().numpy()
                 record['min_ade_y'] = min_ade_y.cpu().numpy()
+                record['min_rade_y'] = min_rade_y.cpu().numpy()
                 record['min_fde_x'] = min_fde_x.cpu().numpy()
                 record['min_fde_y'] = min_fde_y.cpu().numpy()
+                record['min_rfde_y'] = min_rfde_y.cpu().numpy()
                 if neg_likelihood.shape[-1] == 2:
                     record['min_nll_x'] = min_nll[0]
                     record['min_first_nll_x'] = min_first_nll[0]
@@ -473,7 +471,8 @@ class Tester:
         self.recorder.logger.info('Calculation of Global Metrics.')
         metric_list = ['min_loss', 'min_first_loss', 'min_final_loss',
                        'min_l2', 'min_final_l2',
-                       'min_ade', 'min_fde', 'min_ade_x', 'min_ade_y', 'min_fde_x', 'min_fde_y']
+                       'min_ade', 'min_fde', 'min_ade_x', 'min_ade_y', 'min_rade_y',
+                       'min_fde_x', 'min_fde_y', 'min_rfde_y']
         if 'min_nll_x' in save_list[0].keys():
             metric_list = metric_list + ['min_nll_x', 'min_first_nll_x', 'min_final_nll_x',
                                          'min_nll_y', 'min_first_nll_y', 'min_final_nll_y']

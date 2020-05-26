@@ -34,11 +34,10 @@ cross_weights = {0: 0.014705882352941176,
                  }
 cross_scene = [19, 17, 16, 15, 14, 13, 12, 11, 10, 9, 7, 5, 4, 2, 1, 0]
 cross_metrics = ['min_loss', 'min_first_loss', 'min_final_loss',
-                 'min_ade', 'min_fde', 'min_ade_x', 'min_ade_y', 'min_fde_x', 'min_fde_y',
+                 'min_ade', 'min_fde', 'min_ade_x', 'min_ade_y', 'min_rade_y', 'min_fde_x', 'min_fde_y', 'min_rfde_y',
                  'min_l2', 'min_final_l2',
                  'min_nll', 'min_first_nll', 'min_final_nll',
                  'min_nll_x', 'min_nll_y', 'min_first_nll_x', 'min_first_nll_y', 'min_final_nll_x', 'min_final_nll_y']
-cross_metrics = cross_metrics + ['best_' + k for k in cross_metrics]
 
 # only_eval_model_name = 'latest_checkpoint.ckpt'
 only_eval_model_name = 'temp_checkpoint_val.ckpt'
@@ -266,10 +265,23 @@ class CrossValidationRecorder:
                         result += row[metric] * weights[row['valid_scene']] / exist_w_sum
                     metric_result[time] = result
                 metric_result = sorted(metric_result.items(), key=lambda item: item[0])
+
+                # generate best result
+                metric_best_result = dict()
+                best_value = float('inf')
+                for time, value in metric_result:
+                    best_value = min(best_value, value)
+                    metric_best_result[time] = best_value
+                metric_best_result = sorted(metric_best_result.items(), key=lambda item: item[0])
+
                 # plot on board
                 for time, value in metric_result:
                     recorder.writer.add_scalar('CV_{}/sample_{}'.format(metric, sample_time),
                                                scalar_value=value, global_step=time)
+                for time, bvalue in metric_best_result:
+                    recorder.writer.add_scalar('CV_best_{}/sample_{}'.format(metric, sample_time),
+                                               scalar_value=bvalue, global_step=time)
+
         return warning_msg
 
     def dump(self, path_prefix):

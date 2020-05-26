@@ -62,6 +62,16 @@ def l1_loss(pred_traj, pred_traj_gt):
     return torch.sum(torch.abs(pred_traj - pred_traj_gt), dim=-1, keepdim=True)
 
 
+def relative_l1_loss(pred_traj, pred_traj_gt):
+    """
+    :param pred_traj: Tensor of shape (batch, seq_len)/(batch, seq_len). Predicted trajectory along one dimension.
+    :param pred_traj_gt: Tensor of shape (batch, seq_len)/(batch, seq_len).
+                         Groud truth predictions along one dimension.
+    :return: relative l1 loss. Better result should be closer to zero.
+    """
+    return torch.sum(torch.abs(pred_traj - pred_traj_gt) / ((pred_traj_gt + pred_traj) / 2), dim=-1, keepdim=True)
+
+
 def neg_likelihood_gaussian_pdf(gaussian_output, target, keep=False):
     """
     Negative log likelihood loss based on 2D Gaussian Distribution
