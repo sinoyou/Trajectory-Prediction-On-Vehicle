@@ -26,7 +26,6 @@ class Trainer:
         self.device = get_device()
         self.recorder = recorder
         self.pre_epoch = 0
-        self.best_eval_result = dict()
         self.model, self.optimizer = self.build()
         self.data_loader = SingleKittiDataLoader(file_path=self.args.train_dataset,
                                                  batch_size=self.args.batch_size,
@@ -81,7 +80,7 @@ class Trainer:
             model.load_state_dict(checkpoint['model'])
             optimizer.load_state_dict(checkpoint['optimizer'])
             self.pre_epoch = checkpoint['epoch'] if 'epoch' in checkpoint.keys() else 0
-            self.best_eval_result = checkpoint['best_result'] if 'best_result' in checkpoint.keys() else dict()
+            self.eval_result = checkpoint['result'] if 'best_result' in checkpoint.keys() else list()
             self.recorder.logger.info('Saved model trained on epoch = {}'.format(self.pre_epoch))
 
         return model, optimizer
@@ -207,27 +206,19 @@ class Trainer:
             validator = Tester(val_dict, self.recorder)
             feedback = validator.evaluate(step=epoch)
 
-            # evaluation result process
-            self.best_eval_result.setdefault(sample_time, dict())
-            for key, value in feedback['global_metrics'].items():
-                best_eval_sample = self.best_eval_result[sample_time]
-                if 'best_' + key in best_eval_sample.keys():
-                    best_eval_sample['best_' + key] = min(best_eval_sample['best_' + key], value)
-                else:
-                    best_eval_sample['best_' + key] = value
-            # cv recoder not None, then combine feedback and best result to record.
+            # cv recoder not None, then get result to record.
             if cv_recorder:
                 temp = feedback['global_metrics'].copy()
-                for k, v in self.best_eval_result[sample_time].items():
-                    temp[k] = v
                 cv_recorder.add_evaluation_result(record=temp, epoch=epoch, valid_scene=self.args.val_scene,
                                                   sample_time=sample_time)
+            self.eval_result.append({'epoch': epoch, 'valid_scene': self.args.val_scene,
+                                     'sample_time': sample_time, 'record': feedback['global_metrics']})
 
     def get_checkpoint(self, epoch):
         checkpoint = dict()
         checkpoint['model'] = self.model.state_dict()
         checkpoint['optimizer'] = self.optimizer.state_dict()
-        checkpoint['best_result'] = self.best_eval_result
+        checkpoint['result'] = self.eval_result
         checkpoint['epoch'] = epoch
         checkpoint['args'] = self.args
         return checkpoint
