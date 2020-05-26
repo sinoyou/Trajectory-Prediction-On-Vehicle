@@ -34,7 +34,7 @@ cross_weights = {0: 0.014705882352941176,
                  }
 cross_scene = [19, 17, 16, 15, 14, 13, 12, 11, 10, 9, 7, 5, 4, 2, 1, 0]
 cross_metrics = ['min_loss', 'min_first_loss', 'min_final_loss',
-                 'min_ade', 'min_fde', 'min_ade_x', 'min_ade_y', 'min_fde_x', 'min_fde_y',
+                 'min_ade', 'min_fde', 'min_ade_x', 'min_ade_y', 'min_rade_y', 'min_fde_x', 'min_fde_y', 'min_rfde_y',
                  'min_l2', 'min_final_l2',
                  'min_nll', 'min_first_nll', 'min_final_nll',
                  'min_nll_x', 'min_nll_y', 'min_first_nll_x', 'min_first_nll_y', 'min_final_nll_x', 'min_final_nll_y']
