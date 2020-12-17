@@ -50,7 +50,7 @@ Pytorch = 1.4.0
 
 **Inference:** The inference process of Seq2Seq LSTM is similar to the training process. One big difference is that sampling predicted Gaussian distributions replaces choosing mean values  in auto-regressive prediction, since the sampling technique could improve prediction multiplicity.  
 
-<div style="align:center">
+<div align=center>
 <img src="readme.assets/image-20201217191310276.png" alt="image-20201217191310276" width="40%"/>
 </div>
 
@@ -71,13 +71,13 @@ Pytorch = 1.4.0
 - :flags: **Odometry**:  Encode the odometry of ego-centric vehicles. 
 - :white_check_mark: **Visualization of Predicted Distribution**
 
-<div style="align: center">
+<div align=center>
 <img src="readme.assets/image-20201217205144726.png" alt="image-20201217205144726" width="70%"/>
 </div>
 
 - :flags: **GAN and VAE**: Adopt GAN or VAE network to predict multiple plausible trajectories. 
 
-<div style="align: center">
+<div align=center>
 <img src="readme.assets/image-20201217205311006.png" alt="image-20201217205311006" width="70%" />
 </div>
 
