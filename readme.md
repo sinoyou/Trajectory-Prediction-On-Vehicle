@@ -12,7 +12,7 @@ Pytorch = 1.4.0
 
 **KITTI Ref**: [KITTI Tracking Evaluation 2012](http://www.cvlibs.net/datasets/kitti/eval_tracking.php)
 
-**Data Pre-processing: **
+**Data Pre-processing:**
 
 - Use object records with object tag = 'pedestrian' and 'bicycle' in all scenes. If the length of filtered continuous frames in a scene are lower than setting, then the scene will be dropped. 
 - Pick the coordinates in the forward/backward and left/right directions. 
