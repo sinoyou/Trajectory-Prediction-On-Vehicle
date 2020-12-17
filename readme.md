@@ -1,6 +1,6 @@
 # Pedestrian Trajectory Prediction on KITTI [EN]
 
-**Notice: Due to commercial  confidentiality agreement, complete source codes and new dataset are not available yet. The repository currently only contains baseline experiments under public KITTI dataset. ** 
+**Notice: Due to commercial  confidentiality agreement, complete source codes and new dataset are not available yet. The repository currently only contains baseline experiments under public KITTI dataset.** 
 
 ### Environment 
 
@@ -25,7 +25,7 @@ Pytorch = 1.4.0
 
 #### Vanilla LSTM
 
-**Training: ** 
+**Training:** 
 
 - **Loss**: Average Displacement Loss or Negative Likelihood Loss. 
 - **Loss Window**: By changing the parameter 'pred_len' to determine how many frames are involved in loss computation backwards. If 'pred_len = 1', the architecture is many-to-one. If 'pred_len = total_len - 1', then all the model's outputs are involved in loss computation. 
@@ -33,24 +33,26 @@ Pytorch = 1.4.0
 
 ![image-20201217191141352](readme.assets/image-20201217191141352.png)
 
-**Inference: **
+**Inference:**
 
 - **Auto-Regressive Prediction**: The prediction is a multi-step process. Having the output corresponding to the last input of ground truth data as the first prediction step, the process will interactively use current step to predict the next step. 
-- **Predicted Gaussian Distribution and Sampling: ** For quantitative uncertainty estimation, we assume the prediction to be 2D Gaussian distribution. To align the input format in prediction with the input in encoding, sample technique is used for getting 2D coordinates. 
+- **Predicted Gaussian Distribution and Sampling:** For quantitative uncertainty estimation, we assume the prediction to be 2D Gaussian distribution. To align the input format in prediction with the input in encoding, sample technique is used for getting 2D coordinates. 
 
 
 
 #### Seq2Seq LSTM
 
-**Training: ** 
+**Training:** 
 
 - **Process**: The training process can be divided into two steps. The first step is encoding, in which observed features (trajectories, etc.) will be sequentially encoded into a semantic feature vector. Then in the second step, having the semantic vector as the initial hidden state, the LSTM decoder will output predicted trajectories. 
-- **Auto-Regressive Prediction: ** Similar to Vanilla LSTM, the method has the output format with 2D Gaussian Distribution for uncertainty estimation. In decoding, the mean values along two coordinates will be used as input for auto-regressive prediction. 
+- **Auto-Regressive Prediction:** Similar to Vanilla LSTM, the method has the output format with 2D Gaussian Distribution for uncertainty estimation. In decoding, the mean values along two coordinates will be used as input for auto-regressive prediction. 
 - **Optimizer:** Adam
 
-**Inference: ** The inference process of Seq2Seq LSTM is similar to the training process. One big difference is that sampling predicted Gaussian distributions replaces choosing mean values  in auto-regressive prediction, since the sampling technique could improve prediction multiplicity.  
+**Inference:** The inference process of Seq2Seq LSTM is similar to the training process. One big difference is that sampling predicted Gaussian distributions replaces choosing mean values  in auto-regressive prediction, since the sampling technique could improve prediction multiplicity.  
 
-<img src="readme.assets/image-20201217191310276.png" alt="image-20201217191310276" style="zoom:40%;" />
+<div style="align:center">
+<img src="readme.assets/image-20201217191310276.png" alt="image-20201217191310276" width="40%"/>
+</div>
 
 
 
@@ -69,11 +71,15 @@ Pytorch = 1.4.0
 - :flags: **Odometry**:  Encode the odometry of ego-centric vehicles. 
 - :white_check_mark: **Visualization of Predicted Distribution**
 
-<img src="readme.assets/image-20201217205144726.png" alt="image-20201217205144726" style="zoom: 33%;" />
+<div style="align: center">
+<img src="readme.assets/image-20201217205144726.png" alt="image-20201217205144726" width="70%"/>
+</div>
 
 - :flags: **GAN and VAE**: Adopt GAN or VAE network to predict multiple plausible trajectories. 
 
-<img src="readme.assets/image-20201217205311006.png" alt="image-20201217205311006" style="zoom: 33%;" />
+<div style="align: center">
+<img src="readme.assets/image-20201217205311006.png" alt="image-20201217205311006" width="70%" />
+</div>
 
 
 
